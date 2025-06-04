@@ -1,6 +1,7 @@
 import os
 import winrm
 import paramiko
+import hashlib
 from dotenv import load_dotenv
 
 def load_environment():
@@ -59,6 +60,64 @@ def verify_output(output, expected_value):
         print(f"[FAIL] Test failed: Expected '{expected_value}', got '{output['stdout'].strip()}'")
         return False
 
+def get_file_hash(file_path):
+    """Calculate SHA256 hash of a file"""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        # Read the file in chunks to handle large files efficiently
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+def get_remote_file_hash(session, file_path):
+    """Get SHA256 hash of a file on the remote Windows system"""
+    ps_command = f"""
+    $hash = Get-FileHash -Path '{file_path}' -Algorithm SHA256
+    $hash.Hash.ToLower()
+    """
+    result = session.run_ps(ps_command)
+    if result.status_code == 0:
+        return result.std_out.decode('utf-8').strip()
+    return None
+
+def verify_file_integrity(winrm_session, local_path, remote_path):
+    """Verify file integrity by comparing size and hash"""
+    try:
+        # Get local file details
+        local_size = os.path.getsize(local_path)
+        local_hash = get_file_hash(local_path)
+        
+        # Get remote file details using WinRM
+        size_result = winrm_session.run_ps(f'(Get-Item "{remote_path}").Length')
+        if size_result.status_code != 0:
+            print("[ERROR] Failed to get remote file size")
+            return False
+            
+        remote_size = int(size_result.std_out.decode('utf-8').strip())
+        
+        # Compare sizes
+        if local_size != remote_size:
+            print(f"[ERROR] Size verification failed: Local {local_size:,} bytes, Remote {remote_size:,} bytes")
+            return False
+        
+        # Get and compare hashes
+        remote_hash = get_remote_file_hash(winrm_session, remote_path)
+        
+        if not remote_hash:
+            print("[ERROR] Failed to get remote file hash")
+            return False
+            
+        if local_hash.lower() != remote_hash.lower():
+            print("[ERROR] Hash verification failed")
+            return False
+            
+        print(f"[SUCCESS] File integrity verified (SHA256: {local_hash})")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Verification failed: {str(e)}")
+        return False
+
 def copy_and_verify_file(winrm_session, credentials, local_path, remote_path):
     """
     Copy a file to the remote host using SSH/SCP and verify its presence
@@ -77,34 +136,20 @@ def copy_and_verify_file(winrm_session, credentials, local_path, remote_path):
             
             # Get file size
             file_size = os.path.getsize(local_path)
-            print(f"Total file size: {file_size / (1024*1024):.2f} MB")
+            print(f"File size: {file_size / (1024*1024):.2f} MB")
             
             # Copy the file
             sftp.put(local_path, remote_path, callback=lambda sent, total: print(f"Progress: {sent/total*100:.1f}%") if sent % (1024*1024) == 0 else None)
             
-            print("File copy completed successfully")
-            
-            # Verify file presence and size using WinRM
-            verify_result = winrm_session.run_ps(f'Get-Item "{remote_path}" | Select-Object Length')
-            if verify_result.status_code == 0:
-                remote_size = int(verify_result.std_out.decode().strip().split('\n')[-1])
-                if remote_size == file_size:
-                    print(f"[SUCCESS] File successfully verified at {remote_path}")
-                    print(f"[SUCCESS] File size matches: {remote_size} bytes")
-                    return True
-                else:
-                    print(f"[ERROR] File size mismatch. Expected: {file_size}, Got: {remote_size}")
-                    return False
-            else:
-                print(f"[ERROR] File verification failed: {verify_result.std_err.decode('utf-8')}")
-                return False
+            # Verify file integrity
+            return verify_file_integrity(winrm_session, local_path, remote_path)
                 
         finally:
             sftp.close()
             ssh.close()
             
     except Exception as e:
-        print(f"[ERROR] An error occurred during file copy: {str(e)}")
+        print(f"[ERROR] File transfer failed: {str(e)}")
         return False
 
 def main():
@@ -139,14 +184,6 @@ def main():
         remote_file = "C:\\Windows\\Temp\\Collector_velociraptor.exe"
         print("\nStarting file copy operation...")
         copy_and_verify_file(winrm_session, credentials, local_file, remote_file)
-        
-        # List the directory contents to verify
-        print("\nListing directory contents:")
-        ls_result = execute_command(winrm_session, f'Get-ChildItem "C:\\Windows\\Temp\\Collector_velociraptor.exe"')
-        if ls_result['status_code'] == 0:
-            print(f"Directory listing:\n{ls_result['stdout']}")
-        else:
-            print(f"Failed to list directory: {ls_result['stderr']}")
     
     except Exception as e:
         print(f"An error occurred: {str(e)}")

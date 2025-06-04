@@ -3,12 +3,40 @@ import winrm
 import paramiko
 import hashlib
 import warnings
+import shutil
 from dotenv import load_dotenv
 from cryptography.utils import CryptographyDeprecationWarning
 
 # Suppress deprecation warnings
 warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
 warnings.filterwarnings('ignore', message='.*TripleDES.*')
+
+# ANSI Color codes
+GREEN = '\033[92m'
+RED = '\033[91m'
+YELLOW = '\033[93m'
+BLUE = '\033[94m'
+RESET = '\033[0m'
+
+# Status indicators with colors
+SUCCESS_EMOJI = f"{GREEN}[PASS]{RESET}"
+ERROR_EMOJI = f"{RED}[ERROR]{RESET}"
+
+def print_success(message):
+    """Print a success message in green"""
+    print(f"{GREEN}{message}{RESET}")
+
+def print_error(message):
+    """Print an error message in red"""
+    print(f"{RED}{message}{RESET}")
+
+def print_info(message):
+    """Print an info message in blue"""
+    print(f"{BLUE}{message}{RESET}")
+
+def print_warning(message):
+    """Print a warning message in yellow"""
+    print(f"{YELLOW}{message}{RESET}")
 
 def load_environment():
     """Load environment variables from .env file"""
@@ -54,16 +82,33 @@ def execute_command(session, command):
         'stderr': result.std_err.decode('utf-8')
     }
 
+def check_execution_output(output_file):
+    """
+    Check if the execution was successful by looking for 'Exiting' in the output file
+    """
+    try:
+        with open(output_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if "Exiting" in content:
+                print_success(f"{SUCCESS_EMOJI} Execution verification passed: Found 'Exiting' in output")
+                return True
+            else:
+                print_error(f"{ERROR_EMOJI} Execution verification failed: 'Exiting' not found in output")
+                return False
+    except Exception as e:
+        print_error(f"{ERROR_EMOJI} Failed to read output file: {str(e)}")
+        return False
+
 def verify_output(output, expected_value):
     """Verify if the command output matches the expected value"""
     actual = output['stdout'].strip().lower()
     expected = expected_value.lower()
     
     if actual == expected:
-        print(f"[PASS] Test passed: Output matches expected value '{expected_value}'")
+        print(f"{SUCCESS_EMOJI} Test passed: Output matches expected value '{expected_value}'")
         return True
     else:
-        print(f"[FAIL] Test failed: Expected '{expected_value}', got '{output['stdout'].strip()}'")
+        print(f"{ERROR_EMOJI} Test failed: Expected '{expected_value}', got '{output['stdout'].strip()}'")
         return False
 
 def get_file_hash(file_path):
@@ -96,32 +141,32 @@ def verify_file_integrity(winrm_session, local_path, remote_path):
         # Get remote file details using WinRM
         size_result = winrm_session.run_ps(f'(Get-Item "{remote_path}").Length')
         if size_result.status_code != 0:
-            print("[ERROR] Failed to get remote file size")
+            print_error(f"{ERROR_EMOJI} Failed to get remote file size")
             return False
             
         remote_size = int(size_result.std_out.decode('utf-8').strip())
         
         # Compare sizes
         if local_size != remote_size:
-            print(f"[ERROR] Size verification failed: Local {local_size:,} bytes, Remote {remote_size:,} bytes")
+            print_error(f"{ERROR_EMOJI} Size verification failed: Local {local_size:,} bytes, Remote {remote_size:,} bytes")
             return False
         
         # Get and compare hashes
         remote_hash = get_remote_file_hash(winrm_session, remote_path)
         
         if not remote_hash:
-            print("[ERROR] Failed to get remote file hash")
+            print_error(f"{ERROR_EMOJI} Failed to get remote file hash")
             return False
             
         if local_hash.lower() != remote_hash.lower():
-            print("[ERROR] Hash verification failed")
+            print_error(f"{ERROR_EMOJI} Hash verification failed")
             return False
             
-        print(f"[SUCCESS] File integrity verified (SHA256: {local_hash})")
+        print_success(f"{SUCCESS_EMOJI} File integrity verified (SHA256: {local_hash})")
         return True
         
     except Exception as e:
-        print(f"[ERROR] Verification failed: {str(e)}")
+        print_error(f"{ERROR_EMOJI} Verification failed: {str(e)}")
         return False
 
 def copy_and_verify_file(winrm_session, credentials, local_path, remote_path):
@@ -158,6 +203,37 @@ def copy_and_verify_file(winrm_session, credentials, local_path, remote_path):
         print(f"[ERROR] File transfer failed: {str(e)}")
         return False
 
+def clean_runtime_directory():
+    """
+    Clean the runtime directory by removing all files
+    """
+    runtime_dir = "./runtime"
+    try:
+        # Create directory if it doesn't exist
+        if not os.path.exists(runtime_dir):
+            os.makedirs(runtime_dir)
+            print_success(f"{SUCCESS_EMOJI} Created clean runtime directory")
+            return True
+            
+        # Remove all files in the directory
+        for filename in os.listdir(runtime_dir):
+            file_path = os.path.join(runtime_dir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print_error(f"{ERROR_EMOJI} Failed to remove {file_path}: {str(e)}")
+                return False
+                
+        print_success(f"{SUCCESS_EMOJI} Cleaned runtime directory")
+        return True
+        
+    except Exception as e:
+        print_error(f"{ERROR_EMOJI} Failed to clean runtime directory: {str(e)}")
+        return False
+
 def execute_remote_exe(session, exe_path, file_to_pull, credentials):
     """
     Execute the remote exe file and pull back the specified result file
@@ -168,7 +244,7 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
         credentials: Credentials for SSH connection
     """
     try:
-        print(f"\nExecuting {exe_path}...")
+        print_info(f"\nExecuting {exe_path}...")
         # Execute the file and wait for it to complete
         ps_command = f"""
         $process = Start-Process -FilePath '{exe_path}' -NoNewWindow -PassThru -Wait
@@ -177,7 +253,7 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
         result = session.run_ps(ps_command)
         
         if result.status_code == 0:
-            print("[SUCCESS] Execution completed")
+            print(f"{SUCCESS_EMOJI} Execution completed")
             
             # Wait a moment to ensure file is ready
             session.run_ps("Start-Sleep -Seconds 2")
@@ -185,10 +261,14 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
             # Check if the file exists before trying to pull it
             check_file = session.run_ps(f"Test-Path '{file_to_pull}'")
             if check_file.std_out.decode('utf-8').strip().lower() != 'true':
-                print(f"[ERROR] File {file_to_pull} not found after execution")
+                print_error(f"{ERROR_EMOJI} File {file_to_pull} not found after execution")
                 return False
                 
-            print(f"\nPulling file {file_to_pull}...")
+            print_info(f"\nPulling file {file_to_pull}...")
+            
+            # Clean runtime directory before pulling new file
+            if not clean_runtime_directory():
+                return False
             
             # Create SSH client for file transfer
             ssh = create_ssh_client(credentials)
@@ -199,29 +279,29 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
                 # Create SFTP client
                 sftp = ssh.open_sftp()
                 
-                # Create runtime directory if it doesn't exist
-                runtime_dir = "./runtime"
-                if not os.path.exists(runtime_dir):
-                    os.makedirs(runtime_dir)
-                
                 # Get the filename from the path and create full local path
                 local_filename = os.path.basename(file_to_pull)
-                local_path = os.path.join(runtime_dir, local_filename)
+                local_path = os.path.join("./runtime", local_filename)
                 
                 # Download the file
                 sftp.get(file_to_pull, local_path)
-                print(f"[SUCCESS] File pulled successfully to {local_path}")
-                return True
+                print_success(f"{SUCCESS_EMOJI} File pulled successfully to {local_path}")
+                
+                # Check the output file
+                print_info("\nVerifying execution output...")
+                if check_execution_output(local_path):
+                    return True
+                return False
                 
             finally:
                 sftp.close()
                 ssh.close()
         else:
-            print(f"[ERROR] Execution failed: {result.std_err.decode('utf-8')}")
+            print_error(f"{ERROR_EMOJI} Execution failed: {result.std_err.decode('utf-8')}")
             return False
             
     except Exception as e:
-        print(f"[ERROR] Failed to execute file or pull results: {str(e)}")
+        print_error(f"{ERROR_EMOJI} Failed to execute file or pull results: {str(e)}")
         return False
 
 def main():

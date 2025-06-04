@@ -245,15 +245,35 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
     """
     try:
         print_info(f"\nExecuting {exe_path}...")
-        # Execute the file and wait for it to complete
+        
+        # Execute the file with proper command and redirection
         ps_command = f"""
-        $process = Start-Process -FilePath '{exe_path}' -NoNewWindow -PassThru -Wait
-        $process.ExitCode
+        $ErrorActionPreference = 'Stop'
+        try {{
+            # Change to the directory containing the exe
+            Set-Location (Split-Path -Parent '{exe_path}')
+            
+            # Execute the command and redirect output
+            $output = & '{exe_path}' 2>&1
+            
+            # Write output to a file
+            $output | Out-File -FilePath '{file_to_pull}' -Encoding UTF8
+            
+            if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {{
+                throw "Process exited with code $LASTEXITCODE"
+            }}
+            
+            "Success"
+        }} catch {{
+            Write-Error "Failed to execute: $_"
+            throw
+        }}
         """
+        
         result = session.run_ps(ps_command)
         
-        if result.status_code == 0:
-            print(f"{SUCCESS_EMOJI} Execution completed")
+        if result.status_code == 0 and "Success" in result.std_out.decode('utf-8'):
+            print_success(f"{SUCCESS_EMOJI} Execution completed")
             
             # Wait a moment to ensure file is ready
             session.run_ps("Start-Sleep -Seconds 2")
@@ -297,7 +317,8 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
                 sftp.close()
                 ssh.close()
         else:
-            print_error(f"{ERROR_EMOJI} Execution failed: {result.std_err.decode('utf-8')}")
+            error_msg = result.std_err.decode('utf-8') if result.std_err else result.std_out.decode('utf-8')
+            print_error(f"{ERROR_EMOJI} Execution failed: {error_msg}")
             return False
             
     except Exception as e:

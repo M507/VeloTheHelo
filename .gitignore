@@ -1,5 +1,8 @@
 samples/
 datastore/
+runtime*
+runtime/
+runtime_zip/
 
 # specs
 specs

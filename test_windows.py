@@ -234,6 +234,66 @@ def clean_runtime_directory():
         print_error(f"{ERROR_EMOJI} Failed to clean runtime directory: {str(e)}")
         return False
 
+def pull_files_by_pattern(session, credentials, remote_pattern, local_dir="./runtime"):
+    """
+    Pull files matching a pattern from remote system
+    Args:
+        session: WinRM session
+        credentials: Credentials for SSH connection
+        remote_pattern: File pattern to match (e.g., "C:\\path\\Collection-*.zip")
+        local_dir: Local directory to save files
+    """
+    try:
+        # Get list of files matching pattern
+        ps_command = f"""
+        Get-ChildItem -Path '{remote_pattern}' | Select-Object -ExpandProperty FullName
+        """
+        result = session.run_ps(ps_command)
+        
+        if result.status_code != 0:
+            print_error(f"{ERROR_EMOJI} Failed to list files matching pattern")
+            return False
+            
+        # Get file paths as list
+        files = result.std_out.decode('utf-8').strip().split('\n')
+        files = [f.strip() for f in files if f.strip()]  # Clean up paths
+        
+        if not files:
+            print_warning(f"{YELLOW}No files found matching pattern: {remote_pattern}{RESET}")
+            return False
+            
+        # Create SSH client for file transfer
+        ssh = create_ssh_client(credentials)
+        if not ssh:
+            return False
+            
+        try:
+            # Create SFTP client
+            sftp = ssh.open_sftp()
+            
+            # Download each file
+            for remote_path in files:
+                try:
+                    local_filename = os.path.basename(remote_path)
+                    local_path = os.path.join(local_dir, local_filename)
+                    
+                    print_info(f"\nPulling file {remote_path}...")
+                    sftp.get(remote_path, local_path)
+                    print_success(f"{SUCCESS_EMOJI} File pulled successfully to {local_path}")
+                except Exception as e:
+                    print_error(f"{ERROR_EMOJI} Failed to pull {remote_path}: {str(e)}")
+                    continue
+                    
+            return True
+                
+        finally:
+            sftp.close()
+            ssh.close()
+            
+    except Exception as e:
+        print_error(f"{ERROR_EMOJI} Failed to pull files: {str(e)}")
+        return False
+
 def execute_remote_exe(session, exe_path, file_to_pull, credentials):
     """
     Execute the remote exe file and pull back the specified result file
@@ -310,6 +370,10 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
                 # Check the output file
                 print_info("\nVerifying execution output...")
                 if check_execution_output(local_path):
+                    # After successful log file pull, pull the collection zip files
+                    print_info("\nPulling Collection zip files...")
+                    collection_pattern = "C:\\Windows\\Temp\\Collection-*.zip"
+                    pull_files_by_pattern(session, credentials, collection_pattern)
                     return True
                 return False
                 

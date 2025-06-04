@@ -2,7 +2,13 @@ import os
 import winrm
 import paramiko
 import hashlib
+import warnings
 from dotenv import load_dotenv
+from cryptography.utils import CryptographyDeprecationWarning
+
+# Suppress deprecation warnings
+warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
+warnings.filterwarnings('ignore', message='.*TripleDES.*')
 
 def load_environment():
     """Load environment variables from .env file"""
@@ -152,6 +158,72 @@ def copy_and_verify_file(winrm_session, credentials, local_path, remote_path):
         print(f"[ERROR] File transfer failed: {str(e)}")
         return False
 
+def execute_remote_exe(session, exe_path, file_to_pull, credentials):
+    """
+    Execute the remote exe file and pull back the specified result file
+    Args:
+        session: WinRM session
+        exe_path: Path to the executable on remote system
+        file_to_pull: Path to the file that should be pulled back after execution
+        credentials: Credentials for SSH connection
+    """
+    try:
+        print(f"\nExecuting {exe_path}...")
+        # Execute the file and wait for it to complete
+        ps_command = f"""
+        $process = Start-Process -FilePath '{exe_path}' -NoNewWindow -PassThru -Wait
+        $process.ExitCode
+        """
+        result = session.run_ps(ps_command)
+        
+        if result.status_code == 0:
+            print("[SUCCESS] Execution completed")
+            
+            # Wait a moment to ensure file is ready
+            session.run_ps("Start-Sleep -Seconds 2")
+            
+            # Check if the file exists before trying to pull it
+            check_file = session.run_ps(f"Test-Path '{file_to_pull}'")
+            if check_file.std_out.decode('utf-8').strip().lower() != 'true':
+                print(f"[ERROR] File {file_to_pull} not found after execution")
+                return False
+                
+            print(f"\nPulling file {file_to_pull}...")
+            
+            # Create SSH client for file transfer
+            ssh = create_ssh_client(credentials)
+            if not ssh:
+                return False
+                
+            try:
+                # Create SFTP client
+                sftp = ssh.open_sftp()
+                
+                # Create runtime directory if it doesn't exist
+                runtime_dir = "./runtime"
+                if not os.path.exists(runtime_dir):
+                    os.makedirs(runtime_dir)
+                
+                # Get the filename from the path and create full local path
+                local_filename = os.path.basename(file_to_pull)
+                local_path = os.path.join(runtime_dir, local_filename)
+                
+                # Download the file
+                sftp.get(file_to_pull, local_path)
+                print(f"[SUCCESS] File pulled successfully to {local_path}")
+                return True
+                
+            finally:
+                sftp.close()
+                ssh.close()
+        else:
+            print(f"[ERROR] Execution failed: {result.std_err.decode('utf-8')}")
+            return False
+            
+    except Exception as e:
+        print(f"[ERROR] Failed to execute file or pull results: {str(e)}")
+        return False
+
 def main():
     # Load environment variables
     credentials = load_environment()
@@ -183,7 +255,10 @@ def main():
         local_file = "datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe"
         remote_file = "C:\\Windows\\Temp\\Collector_velociraptor.exe"
         print("\nStarting file copy operation...")
-        copy_and_verify_file(winrm_session, credentials, local_file, remote_file)
+        if copy_and_verify_file(winrm_session, credentials, local_file, remote_file):
+            # If file copy and verification succeeded, execute the file and pull back result
+            file_to_pull = "C:\\Windows\\Temp\\Collector_velociraptor-v0.72.4-windows-amd64.exe.log"
+            execute_remote_exe(winrm_session, remote_file, file_to_pull, credentials)
     
     except Exception as e:
         print(f"An error occurred: {str(e)}")

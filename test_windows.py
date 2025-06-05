@@ -5,38 +5,12 @@ import hashlib
 import warnings
 import shutil
 from config import Config, init_directories, get_winrm_credentials
+from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI
 from cryptography.utils import CryptographyDeprecationWarning
 
 # Suppress deprecation warnings
 warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
 warnings.filterwarnings('ignore', message='.*TripleDES.*')
-
-# ANSI Color codes
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
-
-# Status indicators with colors
-SUCCESS_EMOJI = f"{GREEN}[PASS]{RESET}"
-ERROR_EMOJI = f"{RED}[ERROR]{RESET}"
-
-def print_success(message):
-    """Print a success message in green"""
-    print(f"{GREEN}{message}{RESET}")
-
-def print_error(message):
-    """Print an error message in red"""
-    print(f"{RED}{message}{RESET}")
-
-def print_info(message):
-    """Print an info message in blue"""
-    print(f"{BLUE}{message}{RESET}")
-
-def print_warning(message):
-    """Print a warning message in yellow"""
-    print(f"{YELLOW}{message}{RESET}")
 
 def create_winrm_session(credentials):
     """Create a WinRM session with the provided credentials"""

@@ -3,6 +3,7 @@ import sys
 import shutil
 from typing import Tuple, List, Optional
 from config import Config, init_directories
+from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI
 
 def clean_testing_specs():
     """Clean the testing_specs directory by removing all files"""
@@ -10,12 +11,12 @@ def clean_testing_specs():
     try:
         if os.path.exists(specs_dir):
             shutil.rmtree(specs_dir)
-            print(f"\nCleaned {specs_dir} directory")
+            print_success(f"Cleaned {specs_dir} directory")
         os.makedirs(specs_dir)
-        print(f"Created fresh {specs_dir} directory")
+        print_success(f"Created fresh {specs_dir} directory")
         return True
     except Exception as e:
-        print(f"Error cleaning {specs_dir} directory: {e}")
+        print_error(f"Error cleaning {specs_dir} directory: {e}")
         return False
 
 class SpecFileGenerator:
@@ -27,13 +28,13 @@ class SpecFileGenerator:
 
     def try_read_file(self, file_path: str) -> Tuple[Optional[List[str]], Optional[str]]:
         """Try to read a file with different encodings."""
-        print(f"\nAttempting to read {file_path}")
+        print_info(f"\nAttempting to read {file_path}")
         
         # First try UTF-16
         try:
             with open(file_path, 'r', encoding='utf-16') as f:
                 lines = f.readlines()
-                print(f"Successfully read {len(lines)} lines with UTF-16")
+                print_success(f"Successfully read {len(lines)} lines with UTF-16")
                 return lines, 'utf-16'
         except UnicodeError:
             pass
@@ -43,14 +44,14 @@ class SpecFileGenerator:
             try:
                 with open(file_path, 'r', encoding=encoding) as f:
                     lines = f.readlines()
-                    print(f"Successfully read {len(lines)} lines with {encoding}")
+                    print_success(f"Successfully read {len(lines)} lines with {encoding}")
                     return lines, encoding
             except UnicodeDecodeError:
                 continue
             except Exception as e:
-                print(f"Error reading file {file_path}: {e}")
+                print_error(f"Error reading file {file_path}: {e}")
         
-        print(f"Failed to read {file_path} with any encoding")
+        print_error(f"Failed to read {file_path} with any encoding")
         return None, None
 
     def find_section_markers(self, lines: List[str]) -> Tuple[int, int]:
@@ -84,16 +85,16 @@ class SpecFileGenerator:
             spec_filename = f"single_artifact_spec_{clean_artifact_name}.yaml"
             spec_path = os.path.join(self.output_dir, spec_filename)
             
-            print(f"\nCreating spec file: {spec_path}")
-            print(f"Content length: {len(new_content)} lines")
+            print_info(f"\nCreating spec file: {spec_path}")
+            print_info(f"Content length: {len(new_content)} lines")
             
             with open(spec_path, 'w', newline='', encoding=self.template_encoding) as spec_file:
                 spec_file.writelines(new_content)
             
-            print(f"Successfully created spec file for {artifact}")
+            print_success(f"Successfully created spec file for {artifact}")
             return spec_path
         except Exception as e:
-            print(f"Error creating spec file for {artifact}: {e}")
+            print_error(f"Error creating spec file for {artifact}: {e}")
             return ""
 
     def generate_all_specs(self) -> int:
@@ -102,12 +103,12 @@ class SpecFileGenerator:
             # Create output directory if it doesn't exist
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir)
-                print(f"Created directory: {self.output_dir}")
+                print_success(f"Created directory: {self.output_dir}")
 
             # Validate input files
             for path in [self.template_path, self.artifacts_path]:
                 if not os.path.exists(path):
-                    print(f"Error: File not found: {path}")
+                    print_error(f"Error: File not found: {path}")
                     return 0
 
             # Read template file
@@ -118,7 +119,7 @@ class SpecFileGenerator:
             # Find section markers
             start, end = self.find_section_markers(template_lines)
             if start == -1 or end == -1:
-                print("Error: Could not find section markers in template")
+                print_error("Error: Could not find section markers in template")
                 return 0
 
             # Split template
@@ -132,10 +133,10 @@ class SpecFileGenerator:
 
             artifacts = [line.strip() for line in artifacts_lines if line.strip()]
             if not artifacts:
-                print("Error: No artifacts found in the artifacts file")
+                print_error("Error: No artifacts found in the artifacts file")
                 return 0
 
-            print(f"\nFound {len(artifacts)} artifacts to process")
+            print_info(f"\nFound {len(artifacts)} artifacts to process")
 
             # Create spec files
             created_files = 0
@@ -143,15 +144,15 @@ class SpecFileGenerator:
                 if self.create_spec_file(artifact, header_lines, footer_lines):
                     created_files += 1
 
-            print(f"\nSummary:")
-            print(f"Total artifacts processed: {len(artifacts)}")
-            print(f"Successfully created files: {created_files}")
-            print(f"Files can be found in: {os.path.abspath(self.output_dir)}")
+            print_info(f"\nSummary:")
+            print_success(f"Total artifacts processed: {len(artifacts)}")
+            print_success(f"Successfully created files: {created_files}")
+            print_success(f"Files can be found in: {os.path.abspath(self.output_dir)}")
             
             return created_files
 
         except Exception as e:
-            print(f"\nUnexpected error: {e}")
+            print_error(f"\nUnexpected error: {e}")
             import traceback
             traceback.print_exc()
             return 0
@@ -283,7 +284,7 @@ def print_usage():
 def main():
     # Clean testing_specs directory at start
     if not clean_testing_specs():
-        print("Failed to clean testing_specs directory. Exiting.")
+        print_error("Failed to clean testing_specs directory. Exiting.")
         return
 
     # Initialize required directories
@@ -316,7 +317,7 @@ def main():
             )
             test_single_artifact(artifact_name, spec_generator, collector_manager)
         else:
-            print("Invalid command")
+            print_error("Invalid command")
             print_usage()
     else:
         print_usage()

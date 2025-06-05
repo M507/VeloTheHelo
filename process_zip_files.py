@@ -392,6 +392,55 @@ def add_epoch_timestamps(file_path: Path, timestamp_keys: List[str]) -> None:
     except Exception as e:
         print(f"Error adding epoch timestamps in {file_path.name}: {str(e)}")
 
+def detect_and_convert_timestamps(file_path: Path, possible_time_keys: List[str]) -> None:
+    """
+    Automatically detect and convert timestamp values based on key names.
+    Looks for keys containing words from possible_time_keys list and attempts to convert their values to epoch.
+    """
+    try:
+        # Read all lines from the file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        # Process each line
+        updated_lines = []
+        conversions_made = False
+        
+        for line in lines:
+            try:
+                # Parse the JSON object from the line
+                json_obj = json.loads(line)
+                
+                # Process each key in the JSON object
+                for key in list(json_obj.keys()):  # Create a list to avoid modification during iteration
+                    # Check if key contains any of the possible time indicators
+                    if any(time_indicator.lower() in key.lower() for time_indicator in possible_time_keys):
+                        # Skip if we already created an epoch version for this key
+                        if f"{key}_epoch" in json_obj:
+                            continue
+                            
+                        # Try to convert if the value is a string
+                        if isinstance(json_obj[key], str):
+                            epoch_time = convert_iso_to_epoch(json_obj[key])
+                            if epoch_time is not None:
+                                json_obj[f"{key}_epoch"] = epoch_time
+                                conversions_made = True
+                
+                # Convert back to JSON string
+                updated_lines.append(json.dumps(json_obj))
+            except json.JSONDecodeError:
+                # If line is not valid JSON, keep it as is
+                updated_lines.append(line)
+        
+        # Write the updated lines back to the file only if changes were made
+        if conversions_made:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(updated_lines) + '\n')
+            print(f"Auto-detected and converted timestamps in: {file_path.name}")
+        
+    except Exception as e:
+        print(f"Error auto-detecting timestamps in {file_path.name}: {str(e)}")
+
 def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     """
     Process a single zip file through the following steps:
@@ -401,8 +450,9 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     4. Rename files
     5. Process basic information
     6. Update JSON files with system info
-    7. Add epoch timestamps
-    8. Delete .index files
+    7. Add epoch timestamps for known keys
+    8. Auto-detect and convert additional timestamps
+    9. Delete .index files
     """
     # List of timestamp keys to convert to epoch
     # Add new keys here to convert more timestamps
@@ -411,6 +461,22 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
         "KeyLastWriteTimestamp",
         "LastUpdated",
         "KeyMTime"
+    ]
+    
+    # List of words that might indicate a timestamp field
+    # Add new indicators here to detect more timestamp fields
+    possible_time_keys = [
+        "time",
+        "date",
+        "timestamp",
+        "modified",
+        "created",
+        "accessed",
+        "updated",
+        "last",
+        "mtime",
+        "ctime",
+        "atime"
     ]
     
     print(f"\nProcessing: {zip_path.name}")
@@ -437,15 +503,22 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     # Step 6: Update JSON files with system info
     update_json_with_system_info(extract_dir, system_info)
     
-    # Step 7: Add epoch timestamps
+    # Process JSON files in results directory
     results_dir = extract_dir / 'results'
     if results_dir.exists():
-        print("\nAdding epoch timestamps...")
+        # Step 7: Add epoch timestamps for known keys
+        print("\nAdding epoch timestamps for known keys...")
         for file_path in results_dir.glob('*.json'):
             if file_path.name != 'Generic.Client.Info.BasicInformation.json':
                 add_epoch_timestamps(file_path, timestamp_keys)
+        
+        # Step 8: Auto-detect and convert additional timestamps
+        print("\nAuto-detecting and converting additional timestamps...")
+        for file_path in results_dir.glob('*.json'):
+            if file_path.name != 'Generic.Client.Info.BasicInformation.json':
+                detect_and_convert_timestamps(file_path, possible_time_keys)
     
-    # Step 8: Delete .index files
+    # Step 9: Delete .index files
     delete_index_files(extract_dir)
 
 def check_process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:

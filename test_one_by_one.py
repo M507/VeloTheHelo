@@ -1,7 +1,22 @@
 import os
 import sys
+import shutil
 from typing import Tuple, List, Optional
 from config import Config, init_directories
+
+def clean_testing_specs():
+    """Clean the testing_specs directory by removing all files"""
+    specs_dir = Config.get('ARTIFACT_SPECS_DIR')
+    try:
+        if os.path.exists(specs_dir):
+            shutil.rmtree(specs_dir)
+            print(f"\nCleaned {specs_dir} directory")
+        os.makedirs(specs_dir)
+        print(f"Created fresh {specs_dir} directory")
+        return True
+    except Exception as e:
+        print(f"Error cleaning {specs_dir} directory: {e}")
+        return False
 
 class SpecFileGenerator:
     def __init__(self, template_path: str, artifacts_path: str, output_dir: str):
@@ -266,6 +281,11 @@ def print_usage():
     print("    python test_one_by_one.py --test-artifact Windows.System.PowerShell")
 
 def main():
+    # Clean testing_specs directory at start
+    if not clean_testing_specs():
+        print("Failed to clean testing_specs directory. Exiting.")
+        return
+
     # Initialize required directories
     init_directories()
     

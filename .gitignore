@@ -4,6 +4,9 @@ runtime*
 runtime/
 runtime_zip/
 testing_specs/
+testing_specs/*
+collectors/*
+collectors/
 
 # specs
 specs

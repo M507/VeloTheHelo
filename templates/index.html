@@ -194,7 +194,7 @@
                                placeholder="e.g., Windows.System.PowerShell,Windows.Sys.Users">
                     </div>
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors">
+                        <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors" value="true">
                         <label class="form-check-label" for="build-collectors">Build Collectors</label>
                     </div>
                     <button type="submit" class="btn btn-primary" id="submit-btn">
@@ -279,47 +279,43 @@
             }
         });
 
-        document.getElementById('process-form').addEventListener('submit', async (e) => {
+        document.getElementById('process-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            if (isProcessing) return;
-
-            const form = e.target;
-            const formData = new FormData(form);
+            const formData = new FormData(this);
             
-            try {
-                // Clear previous results immediately
-                document.getElementById('status-messages').innerHTML = '';
-                document.getElementById('results-section').style.display = 'none';
-                document.getElementById('results-list').innerHTML = '';
-                document.getElementById('current-artifact').textContent = '-';
-                document.getElementById('processed-count').textContent = '0';
-                document.getElementById('total-count').textContent = '0';
-                document.getElementById('progress-bar').style.width = '0%';
-                document.getElementById('progress-bar').textContent = '0%';
-                
-                // Clear and hide statistics section
-                document.getElementById('stats-section').style.display = 'none';
-                document.getElementById('successful-artifacts').innerHTML = '';
-                document.getElementById('failed-artifacts').innerHTML = '';
-
-                const response = await fetch('/start', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                
+            // Explicitly handle the checkbox
+            const buildCollectors = document.getElementById('build-collectors');
+            formData.set('build_collectors', buildCollectors.checked ? 'true' : 'false');
+            
+            // Disable the submit button and show loading state
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            fetch('/start', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.error) {
-                    alert(data.error);
-                    return;
+                    console.error('Error:', data.error);
+                    alert('Error: ' + data.error);
+                } else {
+                    console.log('Success:', data);
+                    // Start polling for status updates
+                    startStatusPolling();
                 }
-
-                isProcessing = true;
-                document.getElementById('submit-btn').disabled = true;
-                document.getElementById('progress-section').style.display = 'block';
-                startStatusPolling();
-            } catch (error) {
-                alert('Error starting process: ' + error);
-            }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error: ' + error);
+            })
+            .finally(() => {
+                // Re-enable the submit button and restore original text
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-play"></i> Start Processing';
+            });
         });
 
         // Function to format JSON string

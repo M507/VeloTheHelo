@@ -92,9 +92,32 @@ def start_processing():
     profile_id = request.form.get('profile')
     build_collectors = request.form.get('build_collectors', 'false').lower() == 'true'
     mode = request.form.get('mode', 'batch')
+    host = request.form.get('host')
 
     # Log the received parameters
-    app.logger.info(f"Received processing request - Profile: {profile_id}, Build Collectors: {build_collectors}, Mode: {mode}")
+    app.logger.info(f"Received processing request - Profile: {profile_id}, Build Collectors: {build_collectors}, Mode: {mode}, Host: {host}")
+
+    # Validate host selection
+    if not host:
+        return jsonify({'error': 'No host selected'})
+
+    # Set the appropriate host in environment variables
+    if host == 'win10':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN10')
+    elif host == 'win11':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN11')
+    elif host == 'winserver12':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer12')
+    elif host == 'winserver16':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer16')
+    elif host == 'winserver19':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer19')
+    elif host == 'winserver22':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer22')
+    elif host == 'winserver25':
+        os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer25')
+    else:
+        return jsonify({'error': 'Invalid host selected'})
 
     # Get artifacts list
     artifacts = []

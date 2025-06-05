@@ -419,7 +419,7 @@ class CollectorManager:
                     self.update_status(f"File {log_file} not found after execution", True)
                     return False
                 
-                self.update_status(f"Pulling file {log_file}...")
+                self.update_status(f"Pulling log file {log_file}...")
                 if not self.clean_runtime_directory():
                     return False
                 
@@ -432,13 +432,12 @@ class CollectorManager:
                     local_filename = os.path.basename(log_file)
                     local_path = os.path.join("./runtime", local_filename)
                     sftp.get(log_file, local_path)
-                    self.update_status(f"File pulled successfully to {local_path}")
+                    self.update_status(f"Log file pulled successfully to {local_path}")
                     
                     self.update_status("Verifying execution output...")
                     if self.check_execution_output(local_path):
-                        self.update_status("Pulling Collection zip files...")
-                        collection_pattern = "C:\\Windows\\Temp\\Collection-*.zip"
-                        return self.pull_files_by_pattern(collection_pattern)
+                        self.update_status("Execution verification completed successfully")
+                        return True
                     return False
                 finally:
                     sftp.close()
@@ -451,38 +450,23 @@ class CollectorManager:
             self.update_status(f"Failed to execute file or pull results: {str(e)}", True)
             return False
 
-    def pull_collection_data(self, artifact_name: str) -> bool:
-        """Pull collection data from remote system"""
+    def pull_collection_data(self) -> bool:
+        """Pull all collection data from remote system"""
         try:
-            print_info(f"\nPulling collection data for {artifact_name}")
+            print_info("\nPulling collection data")
             
-            # Define paths
-            remote_log = f"C:\\Windows\\Temp\\Collector_velociraptor-v0.72.4-windows-amd64.exe.log"
-            local_log = os.path.join("./runtime", f"collector_{artifact_name}.log")
-            
-            # Get credentials
-            credentials = get_winrm_credentials()
-            
-            # Create WinRM session
-            session = self.create_winrm_session(credentials)
-            
-            # Pull log file
-            if not self.pull_file(session, credentials, remote_log, local_log):
-                print_error(f"Failed to pull log file for {artifact_name}")
+            # Clean runtime directory before pulling files
+            if not self.clean_runtime_directory():
                 return False
-                
-            # Check the output file
-            print_info("\nVerifying execution output...")
-            if self.check_execution_output(local_log):
-                # After successful log file pull, pull the collection zip files
-                print_info("\nPulling Collection zip files...")
-                collection_pattern = "C:\\Windows\\Temp\\Collection-*.zip"
-                if not self.pull_files_by_pattern(collection_pattern):
-                    print_error("Failed to pull collection zip files")
-                    return False
-                return True
             
-            return False
+            # Pull all collection zip files
+            print_info("\nPulling Collection zip files...")
+            collection_pattern = "C:\\Windows\\Temp\\Collection-*.zip"
+            if not self.pull_files_by_pattern(collection_pattern):
+                print_error("Failed to pull collection zip files")
+                return False
+            
+            return True
             
         except Exception as e:
             print_error(f"Error pulling collection data: {str(e)}")
@@ -865,18 +849,6 @@ class CollectorManager:
                     self.update_artifact_statistics(artifact_name, False, time.time() - start_time)
                     return False
             
-            # Step 4: Pull collection data
-            print_info("\nStep 4: Pulling collection data")
-            if not self.pull_collection_data(artifact_name):
-                self.update_artifact_statistics(artifact_name, False, time.time() - start_time)
-                return False
-            
-            # Step 5: Process collection data
-            print_info("\nStep 5: Processing collection data")
-            if not self.process_collection_data(artifact_name):
-                self.update_artifact_statistics(artifact_name, False, time.time() - start_time)
-                return False
-            
             execution_time = time.time() - start_time
             self.update_artifact_statistics(artifact_name, True, execution_time)
             print_success(f"\nSuccessfully processed {artifact_name} in {execution_time:.2f} seconds")
@@ -1067,6 +1039,20 @@ class CollectorManager:
                 if not self.process_single_artifact(artifact, build_collectors):
                     logger.warning(f"Failed to process artifact: {artifact}")
                     overall_success = False
+            
+            # After all artifacts are processed, pull all zip files at once
+            if build_collectors and overall_success:
+                logger.info("All artifacts processed, pulling collection data")
+                print_info("\nPulling all collection data...")
+                if not self.pull_collection_data():
+                    logger.error("Failed to pull collection data")
+                    overall_success = False
+                else:
+                    # Process the pulled data
+                    print_info("\nProcessing collection data...")
+                    if not self.process_collection_data():
+                        logger.error("Failed to process collection data")
+                        overall_success = False
             
             return overall_success
             
@@ -1504,10 +1490,10 @@ class CollectorManager:
             print_error(f"Failed to pull file: {str(e)}")
             return False
 
-    def process_collection_data(self, artifact_name: str) -> bool:
-        """Process collection data for an artifact"""
+    def process_collection_data(self) -> bool:
+        """Process all collection data"""
         try:
-            print_info(f"\nProcessing collection data for {artifact_name}")
+            print_info("\nProcessing collection data")
             
             # Look for zip files in runtime directory
             runtime_dir = "./runtime"
@@ -1606,6 +1592,42 @@ class CollectorManager:
             
         except Exception as e:
             print_error(f"Error processing extracted files: {str(e)}")
+            return False
+
+    def delete_remote_file(self, session: winrm.Session, remote_path: str) -> bool:
+        """Delete a specific file from the remote system"""
+        try:
+            print_info(f"\nDeleting remote file: {remote_path}")
+            logger.debug(f"Deleting remote file: {remote_path}")
+            
+            ps_command = f"""
+            try {{
+                if (Test-Path '{remote_path}') {{
+                    Remove-Item '{remote_path}' -Force
+                    "Successfully deleted {remote_path}"
+                }} else {{
+                    "File not found: {remote_path}"
+                }}
+            }} catch {{
+                throw "Failed to delete {remote_path}: $_"
+            }}
+            """
+            
+            result = self.execute_command(session, ps_command)
+            if result['status_code'] == 0:
+                if "Successfully deleted" in result['stdout']:
+                    print_success("Remote file deleted successfully")
+                    return True
+                else:
+                    print_warning(result['stdout'])
+                    return False
+            else:
+                print_error(f"Failed to delete remote file: {result['stderr']}")
+                return False
+                
+        except Exception as e:
+            print_error(f"Error deleting remote file: {str(e)}")
+            logger.error(f"Error deleting remote file: {str(e)}")
             return False
 
 def main():

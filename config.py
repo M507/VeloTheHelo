@@ -31,7 +31,13 @@ class Config:
     # Default values for all configuration
     DEFAULTS = {
         # WinRM and SSH Configuration
-        'WINRM_HOST': '',
+        'WINRM_HOST_WIN10': '',
+        'WINRM_HOST_WIN11': '',
+        'WINRM_HOST_WINServer12': '',
+        'WINRM_HOST_WINServer16': '',
+        'WINRM_HOST_WINServer19': '',
+        'WINRM_HOST_WINServer22': '',
+        'WINRM_HOST_WINServer25': '',
         'WINRM_USERNAME': '',
         'WINRM_PASSWORD': '',
         'SSH_PORT': '22',
@@ -68,7 +74,7 @@ def get_server_config() -> str:
 def get_winrm_credentials() -> dict:
     """Get WinRM credentials as a dictionary"""
     return {
-        'host': Config.get('WINRM_HOST'),
+        'host': os.getenv('WINRM_HOST', ''),  # Use the environment variable set by web interface
         'username': Config.get('WINRM_USERNAME'),
         'password': Config.get('WINRM_PASSWORD'),
         'ssh_port': int(Config.get('SSH_PORT', '22'))

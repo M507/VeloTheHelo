@@ -2,8 +2,8 @@
     "name": "CA",
     "description": "Certificate Authority related artifacts",
     "artifacts": [
-        "Windows.System.Certificates",
-        "Windows.System.CertificateAuthority",
-        "Windows.System.RootCertificates"
+        "Windows.System.HostsFile",
+        "Windows.Sys.AllUsers",
+        "Windows.Sys.Users"
     ]
 } 

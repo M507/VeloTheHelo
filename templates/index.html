@@ -188,6 +188,19 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="mb-3">
+                        <label for="host" class="form-label">Select Target Host</label>
+                        <select class="form-select mb-3" id="host" name="host" required>
+                            <option value="">Select a host...</option>
+                            <option value="win10">Windows 10</option>
+                            <option value="win11">Windows 11</option>
+                            <option value="winserver12">Windows Server 2012</option>
+                            <option value="winserver16">Windows Server 2016</option>
+                            <option value="winserver19">Windows Server 2019</option>
+                            <option value="winserver22">Windows Server 2022</option>
+                            <option value="winserver25">Windows Server 2025</option>
+                        </select>
+                    </div>
                     <div class="mb-3" id="manual-artifacts">
                         <label for="artifacts" class="form-label">Artifacts (comma-separated)</label>
                         <input type="text" class="form-control" id="artifacts" name="artifacts"

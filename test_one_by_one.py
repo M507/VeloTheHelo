@@ -181,9 +181,10 @@ class CollectorManager:
             
             # Get server config path from environment
             server_config = Config.get('VELO_SERVER_CONFIG')
+            datastore = Config.get('VELO_DATASTORE')
             
             # Build the command
-            cmd = f"{self.velociraptor_path} --config {server_config} collector {spec_path}"
+            cmd = f"{self.velociraptor_path} --config {server_config} collector --datastore {datastore} {spec_path}"
             
             print(f"\nCreating collector for {spec_path}")
             print(f"Command: {cmd}")
@@ -226,28 +227,37 @@ class CollectorManager:
         # TODO: Implement results analysis
         pass
 
-def test_single_artifact(artifact_name: str, spec_generator: SpecFileGenerator, 
-                        collector_manager: CollectorManager) -> bool:
-    """
-    Test a single artifact by:
-    1. Creating its spec file
-    2. Building a collector
-    3. Running it on the remote host
-    4. Collecting and analyzing the results
-    """
+def print_usage():
+    print("\nUsage:")
+    print("  Generate all specs:")
+    print("    python test_one_by_one.py --generate-all")
+    print("\n  Test single or multiple artifacts:")
+    print("    python test_one_by_one.py --test-artifact <artifact1,artifact2,...> [--build]")
+    print("\n  Show current configuration:")
+    print("    python test_one_by_one.py --show-config")
+    print("\nExamples:")
+    print("    # Create and build collector for one artifact:")
+    print("    python test_one_by_one.py --test-artifact Windows.System.PowerShell --build")
+    print("    # Create specs only for multiple artifacts:")
+    print("    python test_one_by_one.py --test-artifact Windows.Sys.AllUsers,Windows.Sys.Users")
+    print("    # Create and build collectors for multiple artifacts:")
+    print("    python test_one_by_one.py --test-artifact Windows.Sys.AllUsers,Windows.Sys.Users --build")
+
+def create_artifact_spec(artifact_name: str, spec_generator: SpecFileGenerator) -> str:
+    """Create a spec file for a single artifact."""
     try:
-        # Create spec file for the artifact
-        print(f"\nTesting artifact: {artifact_name}")
+        print_info(f"\n{SUCCESS_EMOJI} Creating spec file for artifact: {artifact_name}")
         
         # Read template and create spec
         template_lines, encoding = spec_generator.try_read_file(spec_generator.template_path)
         if not template_lines:
-            return False
+            print_error("Failed to read template file")
+            return ""
 
         start, end = spec_generator.find_section_markers(template_lines)
         if start == -1 or end == -1:
-            print("Error: Could not find section markers in template")
-            return False
+            print_error("Error: Could not find section markers in template")
+            return ""
 
         header_lines = template_lines[:start + 2]
         footer_lines = template_lines[end:]
@@ -255,31 +265,61 @@ def test_single_artifact(artifact_name: str, spec_generator: SpecFileGenerator,
         # Create spec file
         spec_path = spec_generator.create_spec_file(artifact_name, header_lines, footer_lines)
         if not spec_path:
-            return False
+            print_error(f"Failed to create spec file for {artifact_name}")
+            return ""
 
-        print(f"Created spec file: {spec_path}")
+        print_success(f"Successfully created spec file: {spec_path}")
+        return spec_path
 
-        # Create collector executable
+    except Exception as e:
+        print_error(f"Error creating spec for artifact {artifact_name}: {e}")
+        return ""
+
+def build_collector(artifact_name: str, spec_path: str, collector_manager: CollectorManager) -> bool:
+    """Build a collector executable for a single artifact."""
+    try:
+        print_info(f"\n{SUCCESS_EMOJI} Building collector executable for {artifact_name}")
         collector_path = collector_manager.create_collector(spec_path)
         if not collector_path:
+            print_error(f"Failed to create collector executable for {artifact_name}")
             return False
 
+        print_success(f"Successfully created collector: {collector_path}")
         return True
 
     except Exception as e:
-        print(f"Error testing artifact {artifact_name}: {e}")
+        print_error(f"Error building collector for {artifact_name}: {e}")
         return False
 
-def print_usage():
-    print("\nUsage:")
-    print("  Generate all specs:")
-    print("    python test_one_by_one.py --generate-all")
-    print("\n  Test single artifact:")
-    print("    python test_one_by_one.py --test-artifact <artifact_name>")
-    print("\n  Show current configuration:")
-    print("    python test_one_by_one.py --show-config")
-    print("\nExample:")
-    print("    python test_one_by_one.py --test-artifact Windows.System.PowerShell")
+def process_artifacts(artifacts: List[str], spec_generator: SpecFileGenerator, 
+                     collector_manager: Optional[CollectorManager] = None) -> bool:
+    """Process a list of artifacts - create specs and optionally build collectors."""
+    success_count = 0
+    total_artifacts = len(artifacts)
+
+    for artifact_name in artifacts:
+        artifact_name = artifact_name.strip()
+        print_info(f"\nProcessing artifact ({artifacts.index(artifact_name) + 1}/{total_artifacts}): {artifact_name}")
+        
+        # Create spec file
+        spec_path = create_artifact_spec(artifact_name, spec_generator)
+        if not spec_path:
+            continue
+
+        # Build collector if requested
+        if collector_manager:
+            if build_collector(artifact_name, spec_path, collector_manager):
+                success_count += 1
+        else:
+            success_count += 1
+
+    # Print summary
+    print_info(f"\n{SUCCESS_EMOJI} Summary:")
+    print_info(f"Total artifacts processed: {total_artifacts}")
+    print_info(f"Successful: {success_count}")
+    print_info(f"Failed: {total_artifacts - success_count}")
+
+    return success_count == total_artifacts
 
 def main():
     # Clean testing_specs directory at start
@@ -305,17 +345,34 @@ def main():
             spec_generator.generate_all_specs()
             
         elif sys.argv[1] == '--test-artifact' and len(sys.argv) > 2:
-            artifact_name = sys.argv[2]
+            # Get the list of artifacts
+            artifacts = sys.argv[2].split(',')
+            
+            # Check if we should build collectors
+            should_build = '--build' in sys.argv
+            
+            print_info(f"\nStarting artifact processing:")
+            print_info(f"Artifacts to process: {', '.join(artifacts)}")
+            print_info(f"Build collectors: {'Yes' if should_build else 'No'}")
+            
             spec_generator = SpecFileGenerator(
                 Config.get('ARTIFACT_TEMPLATE_PATH'),
                 Config.get('ARTIFACT_LIST_FILE'),
                 Config.get('ARTIFACT_SPECS_DIR')
             )
-            collector_manager = CollectorManager(
-                Config.get('VELO_BINARY_PATH'),
-                Config.get('WINRM_HOST')
-            )
-            test_single_artifact(artifact_name, spec_generator, collector_manager)
+            
+            # Only create collector manager if building is requested
+            collector_manager = None
+            if should_build:
+                collector_manager = CollectorManager(
+                    Config.get('VELO_BINARY_PATH'),
+                    Config.get('WINRM_HOST')
+                )
+            
+            if process_artifacts(artifacts, spec_generator, collector_manager):
+                print_success(f"\nSuccessfully completed processing all artifacts")
+            else:
+                print_error(f"\nFailed to process some artifacts")
         else:
             print_error("Invalid command")
             print_usage()

@@ -389,6 +389,56 @@ def execute_remote_exe(session, exe_path, file_to_pull, credentials):
         print_error(f"{ERROR_EMOJI} Failed to execute file or pull results: {str(e)}")
         return False
 
+def cleanup_remote_files(session):
+    """
+    Clean up Collection*.zip, Collector_*.exe, and Collector_*.log files from remote system
+    """
+    print_info("\nCleaning up remote files...")
+    
+    cleanup_patterns = [
+        "C:\\Windows\\Temp\\Collection*.zip",
+        "C:\\Windows\\Temp\\Collector_*.exe",
+        "C:\\Windows\\Temp\\Collector_*.log"
+    ]
+    
+    ps_command = """
+    $ErrorActionPreference = 'Stop'
+    try {
+        $patterns = @(
+            'C:\\Windows\\Temp\\Collection*.zip',
+            'C:\\Windows\\Temp\\Collector_*.exe',
+            'C:\\Windows\\Temp\\Collector_*.log'
+        )
+        
+        foreach ($pattern in $patterns) {
+            $files = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            if ($files) {
+                foreach ($file in $files) {
+                    Remove-Item -Path $file.FullName -Force
+                    Write-Output "Removed: $($file.Name)"
+                }
+            }
+        }
+        "Cleanup completed successfully"
+    } catch {
+        Write-Error "Cleanup failed: $_"
+        throw
+    }
+    """
+    
+    try:
+        result = session.run_ps(ps_command)
+        if result.status_code == 0:
+            print_success(f"{SUCCESS_EMOJI} Remote files cleaned up successfully")
+            return True
+        else:
+            error_msg = result.std_err.decode('utf-8') if result.std_err else result.std_out.decode('utf-8')
+            print_error(f"{ERROR_EMOJI} Cleanup failed: {error_msg}")
+            return False
+    except Exception as e:
+        print_error(f"{ERROR_EMOJI} Failed to clean up remote files: {str(e)}")
+        return False
+
 def main():
     # Load environment variables
     credentials = load_environment()
@@ -413,17 +463,21 @@ def main():
             print(f"Command output: {result['stdout']}")
             # Verify if the output matches 'administrator'
             verify_output(result, 'win10-stand-alo\\administrator')
+            
+            # Clean up remote files before proceeding
+            if not cleanup_remote_files(winrm_session):
+                print_warning("Proceeding despite cleanup issues...")
+            
+            # Copy and verify the Velociraptor collector file
+            local_file = "datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe"
+            remote_file = "C:\\Windows\\Temp\\Collector_velociraptor.exe"
+            print("\nStarting file copy operation...")
+            if copy_and_verify_file(winrm_session, credentials, local_file, remote_file):
+                # If file copy and verification succeeded, execute the file and pull back result
+                file_to_pull = "C:\\Windows\\Temp\\Collector_velociraptor-v0.72.4-windows-amd64.exe.log"
+                execute_remote_exe(winrm_session, remote_file, file_to_pull, credentials)
         else:
             print(f"Command failed with error: {result['stderr']}")
-
-        # Copy and verify the Velociraptor collector file
-        local_file = "datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe"
-        remote_file = "C:\\Windows\\Temp\\Collector_velociraptor.exe"
-        print("\nStarting file copy operation...")
-        if copy_and_verify_file(winrm_session, credentials, local_file, remote_file):
-            # If file copy and verification succeeded, execute the file and pull back result
-            file_to_pull = "C:\\Windows\\Temp\\Collector_velociraptor-v0.72.4-windows-amd64.exe.log"
-            execute_remote_exe(winrm_session, remote_file, file_to_pull, credentials)
     
     except Exception as e:
         print(f"An error occurred: {str(e)}")

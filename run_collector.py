@@ -3,56 +3,13 @@ import subprocess
 import time
 from pathlib import Path
 import os
-import shutil
-
-# ANSI Color codes
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
+from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI
 
 def print_header(message):
     """Print a formatted header message"""
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}== {message}{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}\n")
-
-def print_success(message):
-    """Print a success message in green"""
-    print(f"{GREEN}{message}{RESET}")
-
-def print_error(message):
-    """Print an error message in red"""
-    print(f"{RED}{message}{RESET}")
-
-def print_info(message):
-    """Print an info message in blue"""
-    print(f"{BLUE}{message}{RESET}")
-
-def cleanup_directories():
-    """
-    Clean up runtime and runtime_zip directories by removing all contents
-    """
-    directories = ['runtime', 'runtime_zip']
-    for dir_name in directories:
-        dir_path = Path(dir_name)
-        if dir_path.exists():
-            print_info(f"Cleaning {dir_name} directory...")
-            try:
-                # Remove all contents of the directory
-                for item in dir_path.iterdir():
-                    if item.is_file():
-                        item.unlink()
-                    elif item.is_dir():
-                        shutil.rmtree(item)
-                print_success(f"Cleaned {dir_name} directory")
-            except Exception as e:
-                print_error(f"Error cleaning {dir_name} directory: {str(e)}")
-        else:
-            # Create the directory if it doesn't exist
-            dir_path.mkdir(exist_ok=True)
-            print_success(f"Created {dir_name} directory")
+    print_info(f"\n{'='*80}")
+    print_info(f"== {message}")
+    print_info(f"{'='*80}\n")
 
 def run_script(script_name):
     """
@@ -93,10 +50,6 @@ def main():
     start_time = time.time()
     
     print_header("Starting Collector Workflow")
-    
-    # Clean up directories before starting
-    print_header("Cleaning up directories")
-    cleanup_directories()
     
     # Step 1: Run test_windows.py
     print_header("Step 1: Running Windows Tests and Collection")

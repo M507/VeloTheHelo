@@ -5,19 +5,25 @@ from typing import Tuple, List, Optional
 from config import Config, init_directories
 from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI
 
-def clean_testing_specs():
-    """Clean the testing_specs directory by removing all files"""
-    specs_dir = Config.get('ARTIFACT_SPECS_DIR')
-    try:
-        if os.path.exists(specs_dir):
-            shutil.rmtree(specs_dir)
-            print_success(f"Cleaned {specs_dir} directory")
-        os.makedirs(specs_dir)
-        print_success(f"Created fresh {specs_dir} directory")
-        return True
-    except Exception as e:
-        print_error(f"Error cleaning {specs_dir} directory: {e}")
-        return False
+def clean_all_directories():
+    """Clean all working directories: testing_specs, runtime_zip, and runtime"""
+    directories = [
+        Config.get('ARTIFACT_SPECS_DIR'),  # testing_specs
+        'runtime_zip',
+        'runtime'
+    ]
+    
+    for directory in directories:
+        try:
+            if os.path.exists(directory):
+                shutil.rmtree(directory)
+                print_success(f"Cleaned {directory} directory")
+            os.makedirs(directory)
+            print_success(f"Created fresh {directory} directory")
+        except Exception as e:
+            print_error(f"Error cleaning {directory} directory: {e}")
+            return False
+    return True
 
 class SpecFileGenerator:
     def __init__(self, template_path: str, artifacts_path: str, output_dir: str):
@@ -332,9 +338,9 @@ def process_artifacts(artifacts: List[str], spec_generator: SpecFileGenerator,
     return success_count == total_artifacts
 
 def main():
-    # Clean testing_specs directory at start
-    if not clean_testing_specs():
-        print_error("Failed to clean testing_specs directory. Exiting.")
+    # Clean all directories at start
+    if not clean_all_directories():
+        print_error("Failed to clean directories. Exiting.")
         return
 
     # Initialize required directories

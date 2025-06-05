@@ -13,14 +13,6 @@ def create_directory(directory: Path) -> None:
     """Create directory if it doesn't exist."""
     directory.mkdir(exist_ok=True)
 
-def cleanup_extracted_folders(directory: Path) -> None:
-    """Remove all folders in the specified directory while preserving files."""
-    if directory.exists():
-        print(f"Cleaning up folders in {directory} directory...")
-        for item in directory.iterdir():
-            if item.is_dir():
-                shutil.rmtree(item)
-        print("Cleanup complete.")
 
 def extract_filename_info(filename: str) -> Tuple[Optional[str], Optional[str]]:
     """Extract FQDN and timestamp from filename.
@@ -610,7 +602,6 @@ def process_zip_files():
     
     # Create and clean directories
     create_directory(runtime_zip_dir)
-    cleanup_extracted_folders(runtime_zip_dir)
     
     # Check source directory
     if not runtime_dir.exists():

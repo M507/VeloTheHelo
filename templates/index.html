@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artifact Processor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-message {
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .status-message.error {
+            background-color: #ffe6e6;
+            color: #dc3545;
+        }
+        .status-message.info {
+            background-color: #e6f3ff;
+            color: #0d6efd;
+        }
+        .timestamp {
+            color: #6c757d;
+            margin-right: 10px;
+            font-family: monospace;
+        }
+        .elapsed-time {
+            color: #28a745;
+            font-family: monospace;
+            font-size: 0.9em;
+            float: right;
+        }
+        .message-content {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .file-item {
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            margin: 5px 0;
+            border-radius: 4px;
+            background-color: white;
+        }
+        .file-item i {
+            margin-right: 10px;
+            color: #6c757d;
+        }
+        .json-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .json-line {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .json-line pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .json-line code {
+            padding: 0 !important;
+            background: transparent !important;
+        }
+        .json-line-header {
+            padding: 5px;
+            margin-bottom: 5px;
+            color: #6c757d;
+            font-size: 0.9em;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .json-line-content {
+            padding: 5px;
+        }
+        .copy-btn {
+            float: right;
+            padding: 2px 8px;
+            font-size: 0.8em;
+            color: #6c757d;
+            background: transparent;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .copy-btn:hover {
+            background-color: #f8f9fa;
+        }
+        .toggle-btn {
+            padding: 2px 8px;
+            margin-right: 5px;
+            font-size: 0.8em;
+            color: #6c757d;
+            background: transparent;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .toggle-btn:hover {
+            background-color: #f8f9fa;
+        }
+        .collapsed .json-line-content {
+            display: none;
+        }
+        #status-messages {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .results-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        #progress-bar {
+            height: 20px;
+        }
+        .artifact-list {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        .artifact-item {
+            padding: 8px;
+            margin: 4px 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .artifact-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .artifact-name {
+            font-weight: bold;
+        }
+        .artifact-meta {
+            font-size: 0.85em;
+            opacity: 0.8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .execution-time {
+            background-color: rgba(255, 255, 255, 0.15);
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Artifact Processor</h1>
+        
+        <!-- Input Form -->
+        <div class="card">
+            <div class="card-body">
+                <form id="process-form">
+                    <div class="mb-3">
+                        <label for="profile" class="form-label">Select Profile</label>
+                        <select class="form-select mb-3" id="profile" name="profile">
+                            <option value="">Custom (Manual Input)</option>
+                            {% for profile in profiles %}
+                            <option value="{{ profile.id }}">{{ profile.name }} - {{ profile.description }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3" id="manual-artifacts">
+                        <label for="artifacts" class="form-label">Artifacts (comma-separated)</label>
+                        <input type="text" class="form-control" id="artifacts" name="artifacts"
+                               placeholder="e.g., Windows.System.PowerShell,Windows.Sys.Users">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors">
+                        <label class="form-check-label" for="build-collectors">Build Collectors</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">
+                        <i class="fas fa-play"></i> Start Processing
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="card" id="progress-section" style="display: none;">
+            <div class="card-body">
+                <h5 class="card-title">Progress</h5>
+                <div class="progress mb-3">
+                    <div class="progress-bar" id="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <p class="mb-2">Current Artifact: <span id="current-artifact">-</span></p>
+                <p class="mb-2">Processed: <span id="processed-count">0</span> / <span id="total-count">0</span></p>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Status Messages</h5>
+                <div id="status-messages" class="mb-3"></div>
+            </div>
+        </div>
+
+        <!-- Statistics Dashboard -->
+        <div class="card" id="stats-section" style="display: none;">
+            <div class="card-body">
+                <h5 class="card-title">Artifact Processing Statistics</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card bg-success text-white mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Successful Artifacts</h6>
+                                <div id="successful-artifacts" class="artifact-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-danger text-white mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Failed Artifacts</h6>
+                                <div id="failed-artifacts" class="artifact-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="card" id="results-section" style="display: none;">
+            <div class="card-body">
+                <h5 class="card-title">Results</h5>
+                <div id="results-list" class="results-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
+
+    <script>
+        let isProcessing = false;
+
+        // Handle profile selection
+        document.getElementById('profile').addEventListener('change', function() {
+            const manualInput = document.getElementById('manual-artifacts');
+            const artifactsInput = document.getElementById('artifacts');
+            
+            if (this.value) {
+                manualInput.style.display = 'none';
+                artifactsInput.removeAttribute('required');
+            } else {
+                manualInput.style.display = 'block';
+                artifactsInput.setAttribute('required', 'required');
+            }
+        });
+
+        document.getElementById('process-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (isProcessing) return;
+
+            const form = e.target;
+            const formData = new FormData(form);
+            
+            try {
+                // Clear previous results immediately
+                document.getElementById('status-messages').innerHTML = '';
+                document.getElementById('results-section').style.display = 'none';
+                document.getElementById('results-list').innerHTML = '';
+                document.getElementById('current-artifact').textContent = '-';
+                document.getElementById('processed-count').textContent = '0';
+                document.getElementById('total-count').textContent = '0';
+                document.getElementById('progress-bar').style.width = '0%';
+                document.getElementById('progress-bar').textContent = '0%';
+                
+                // Clear and hide statistics section
+                document.getElementById('stats-section').style.display = 'none';
+                document.getElementById('successful-artifacts').innerHTML = '';
+                document.getElementById('failed-artifacts').innerHTML = '';
+
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                isProcessing = true;
+                document.getElementById('submit-btn').disabled = true;
+                document.getElementById('progress-section').style.display = 'block';
+                startStatusPolling();
+            } catch (error) {
+                alert('Error starting process: ' + error);
+            }
+        });
+
+        // Function to format JSON string
+        function formatJSON(jsonString) {
+            try {
+                const obj = JSON.parse(jsonString);
+                return JSON.stringify(obj, null, 2);
+            } catch (e) {
+                return jsonString; // Return original if not valid JSON
+            }
+        }
+
+        // Function to toggle JSON content visibility
+        function toggleJSON(button) {
+            const jsonLine = button.closest('.json-line');
+            jsonLine.classList.toggle('collapsed');
+            button.innerHTML = jsonLine.classList.contains('collapsed') ? 
+                '<i class="fas fa-plus"></i>' : 
+                '<i class="fas fa-minus"></i>';
+        }
+
+        // Function to copy JSON content
+        function copyJSON(button) {
+            const content = button.closest('.json-line').querySelector('code').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i>';
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            });
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+
+                // Update progress
+                const progress = data.total_artifacts ? 
+                    Math.round((data.processed / data.total_artifacts) * 100) : 0;
+                document.getElementById('progress-bar').style.width = `${progress}%`;
+                document.getElementById('progress-bar').textContent = `${progress}%`;
+                
+                // Update counts
+                document.getElementById('processed-count').textContent = data.processed;
+                document.getElementById('total-count').textContent = data.total_artifacts;
+                document.getElementById('current-artifact').textContent = 
+                    data.current_artifact || '-';
+
+                // Update messages
+                const messagesDiv = document.getElementById('status-messages');
+                messagesDiv.innerHTML = data.messages.map(msg => `
+                    <div class="status-message ${msg.type}">
+                        <span class="timestamp">[${msg.timestamp}]</span>
+                        <span class="message-content">${msg.message}</span>
+                        <span class="elapsed-time">${msg.elapsed}</span>
+                    </div>
+                `).join('');
+
+                // Update statistics dashboard
+                if (data.completed) {
+                    const statsSection = document.getElementById('stats-section');
+                    statsSection.style.display = 'block';
+                    
+                    // Update successful artifacts
+                    const successfulDiv = document.getElementById('successful-artifacts');
+                    successfulDiv.innerHTML = data.artifact_stats.successful.map(artifact => `
+                        <div class="artifact-item">
+                            <div class="artifact-info">
+                                <i class="fas fa-check-circle"></i>
+                                <span class="artifact-name">${artifact.name}</span>
+                            </div>
+                            <div class="artifact-meta">
+                                <span class="execution-time">
+                                    <i class="fas fa-stopwatch"></i>
+                                    ${artifact.execution_time}s
+                                </span>
+                            </div>
+                        </div>
+                    `).join('') || '<div class="artifact-item">No successful artifacts</div>';
+                    
+                    // Update failed artifacts
+                    const failedDiv = document.getElementById('failed-artifacts');
+                    failedDiv.innerHTML = data.artifact_stats.failed.map(artifact => `
+                        <div class="artifact-item">
+                            <div class="artifact-info">
+                                <i class="fas fa-times-circle"></i>
+                                <span class="artifact-name">${artifact.name}</span>
+                            </div>
+                            <div class="artifact-meta">
+                                <span class="execution-time">
+                                    <i class="fas fa-stopwatch"></i>
+                                    ${artifact.execution_time}s
+                                </span>
+                            </div>
+                        </div>
+                    `).join('') || '<div class="artifact-item">No failed artifacts</div>';
+
+                    // Update results section
+                    document.getElementById('results-section').style.display = 'block';
+                    document.getElementById('results-list').innerHTML = data.results.map(result => {
+                        if (result.preview && result.preview.length > 0) {
+                            const jsonLines = result.preview.map((line, index) => {
+                                const formattedJSON = formatJSON(line);
+                                return `
+                                    <div class="json-line">
+                                        <div class="json-line-header">
+                                            <button class="toggle-btn" onclick="toggleJSON(this)">
+                                                <i class="fas fa-minus"></i>
+                                            </button>
+                                            <span>Line ${index + 1}</span>
+                                            <button class="copy-btn" onclick="copyJSON(this)">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                        <div class="json-line-content">
+                                            <pre><code class="language-json">${formattedJSON}</code></pre>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+
+                            return `
+                                <div class="file-item">
+                                    <i class="fas fa-file"></i> ${result.path}
+                                    <div class="json-preview">
+                                        ${jsonLines}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        return `
+                            <div class="file-item">
+                                <i class="fas fa-file"></i> ${result.path}
+                            </div>
+                        `;
+                    }).join('');
+
+                    // Initialize syntax highlighting
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightBlock(block);
+                    });
+                    
+                    if (!data.processing) {
+                        isProcessing = false;
+                        document.getElementById('submit-btn').disabled = false;
+                        return false; // Stop polling
+                    }
+                }
+
+                return true; // Continue polling
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                return true; // Continue polling despite error
+            }
+        }
+
+        function startStatusPolling() {
+            const poll = async () => {
+                if (await updateStatus()) {
+                    setTimeout(poll, 1000);
+                }
+            };
+            poll();
+        }
+    </script>
+</body>
+</html> 

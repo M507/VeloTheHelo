@@ -9,6 +9,9 @@ testing_specs/
 specs
 !specs\test.yaml
 
+
+*.pem
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

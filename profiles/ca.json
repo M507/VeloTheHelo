@@ -1,0 +1,9 @@
+{
+    "name": "CA",
+    "description": "Certificate Authority related artifacts",
+    "artifacts": [
+        "Windows.System.Certificates",
+        "Windows.System.CertificateAuthority",
+        "Windows.System.RootCertificates"
+    ]
+} 

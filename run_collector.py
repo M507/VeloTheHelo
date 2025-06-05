@@ -3,6 +3,7 @@ import subprocess
 import time
 from pathlib import Path
 import os
+import shutil
 
 # ANSI Color codes
 GREEN = '\033[92m'
@@ -28,6 +29,30 @@ def print_error(message):
 def print_info(message):
     """Print an info message in blue"""
     print(f"{BLUE}{message}{RESET}")
+
+def cleanup_directories():
+    """
+    Clean up runtime and runtime_zip directories by removing all contents
+    """
+    directories = ['runtime', 'runtime_zip']
+    for dir_name in directories:
+        dir_path = Path(dir_name)
+        if dir_path.exists():
+            print_info(f"Cleaning {dir_name} directory...")
+            try:
+                # Remove all contents of the directory
+                for item in dir_path.iterdir():
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                print_success(f"Cleaned {dir_name} directory")
+            except Exception as e:
+                print_error(f"Error cleaning {dir_name} directory: {str(e)}")
+        else:
+            # Create the directory if it doesn't exist
+            dir_path.mkdir(exist_ok=True)
+            print_success(f"Created {dir_name} directory")
 
 def run_script(script_name):
     """
@@ -68,6 +93,10 @@ def main():
     start_time = time.time()
     
     print_header("Starting Collector Workflow")
+    
+    # Clean up directories before starting
+    print_header("Cleaning up directories")
+    cleanup_directories()
     
     # Step 1: Run test_windows.py
     print_header("Step 1: Running Windows Tests and Collection")

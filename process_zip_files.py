@@ -6,6 +6,8 @@ import re
 import json
 from urllib.parse import unquote
 from typing import Tuple, Optional, Dict, Any, List, Set
+from datetime import datetime
+import pytz
 
 def create_directory(directory: Path) -> None:
     """Create directory if it doesn't exist."""
@@ -328,6 +330,68 @@ def process_basic_information(extract_dir: Path) -> Optional[Dict[str, Any]]:
     
     return system_info
 
+def delete_index_files(directory: Path) -> None:
+    """Delete all .index files in the specified directory and its subdirectories."""
+    print("\nDeleting .index files...")
+    for root, _, files in os.walk(directory):
+        root_path = Path(root)
+        for file in files:
+            if file.endswith('.index'):
+                file_path = root_path / file
+                try:
+                    file_path.unlink()
+                    print(f"Deleted: {file_path}")
+                except Exception as e:
+                    print(f"Error deleting {file_path}: {str(e)}")
+
+def convert_iso_to_epoch(timestamp_str: str) -> Optional[int]:
+    """Convert ISO format timestamp to epoch (Unix timestamp)."""
+    try:
+        dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
+        dt = pytz.utc.localize(dt)
+        return int(dt.timestamp())
+    except (ValueError, TypeError):
+        return None
+
+def add_epoch_timestamps(file_path: Path, timestamp_keys: List[str]) -> None:
+    """
+    Add epoch timestamps for specified keys in JSON files.
+    The timestamp must be in ISO format: "2025-06-04T20:08:02Z"
+    """
+    try:
+        # Read all lines from the file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        # Process each line
+        updated_lines = []
+        for line in lines:
+            try:
+                # Parse the JSON object from the line
+                json_obj = json.loads(line)
+                
+                # Process each timestamp key
+                for key in timestamp_keys:
+                    if key in json_obj and isinstance(json_obj[key], str):
+                        epoch_time = convert_iso_to_epoch(json_obj[key])
+                        if epoch_time is not None:
+                            json_obj[f"{key}_epoch"] = epoch_time
+                
+                # Convert back to JSON string
+                updated_lines.append(json.dumps(json_obj))
+            except json.JSONDecodeError:
+                # If line is not valid JSON, keep it as is
+                updated_lines.append(line)
+        
+        # Write the updated lines back to the file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(updated_lines) + '\n')
+        
+        print(f"Added epoch timestamps in: {file_path.name}")
+        
+    except Exception as e:
+        print(f"Error adding epoch timestamps in {file_path.name}: {str(e)}")
+
 def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     """
     Process a single zip file through the following steps:
@@ -337,7 +401,18 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     4. Rename files
     5. Process basic information
     6. Update JSON files with system info
+    7. Add epoch timestamps
+    8. Delete .index files
     """
+    # List of timestamp keys to convert to epoch
+    # Add new keys here to convert more timestamps
+    timestamp_keys = [
+        "visit_time",
+        "KeyLastWriteTimestamp",
+        "LastUpdated",
+        "KeyMTime"
+    ]
+    
     print(f"\nProcessing: {zip_path.name}")
     
     # Step 1: Process file information
@@ -361,6 +436,17 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     
     # Step 6: Update JSON files with system info
     update_json_with_system_info(extract_dir, system_info)
+    
+    # Step 7: Add epoch timestamps
+    results_dir = extract_dir / 'results'
+    if results_dir.exists():
+        print("\nAdding epoch timestamps...")
+        for file_path in results_dir.glob('*.json'):
+            if file_path.name != 'Generic.Client.Info.BasicInformation.json':
+                add_epoch_timestamps(file_path, timestamp_keys)
+    
+    # Step 8: Delete .index files
+    delete_index_files(extract_dir)
 
 def check_process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     """

@@ -246,34 +246,80 @@ def update_json_files(extract_dir: Path, system_info: Dict[str, Any]) -> None:
         except Exception as e:
             print(f"Error updating {file_path.name}: {str(e)}")
 
-def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
-    """Process a single zip file."""
-    print(f"\nProcessing: {zip_path.name}")
-    
-    # Extract FQDN and timestamp
+def setup_extraction_directory(zip_path: Path, runtime_zip_dir: Path) -> Tuple[Path, Path]:
+    """
+    Set up the directory for zip extraction.
+    Returns tuple of (destination zip path, extraction directory path)
+    """
+    dest_path = copy_zip_file(zip_path, runtime_zip_dir)
+    extract_dir = runtime_zip_dir / zip_path.stem
+    create_directory(extract_dir)
+    return dest_path, extract_dir
+
+def process_file_info(zip_path: Path) -> None:
+    """
+    Process and display the file information (FQDN and timestamp).
+    """
     fqdn, timestamp = extract_filename_info(zip_path.name)
     if fqdn and timestamp:
         print(f"FQDN: {fqdn}")
         print(f"Timestamp: {timestamp}")
+
+def process_basic_information(extract_dir: Path) -> Optional[Dict[str, Any]]:
+    """
+    Process the basic information file and return system info if found.
+    """
+    basic_info = read_basic_info(extract_dir)
+    if not basic_info:
+        print("No basic information found")
+        return None
     
-    # Copy and extract zip file
-    dest_path = copy_zip_file(zip_path, runtime_zip_dir)
-    extract_dir = runtime_zip_dir / zip_path.stem
-    create_directory(extract_dir)
+    system_info = extract_system_info(basic_info)
+    if not system_info:
+        print("No system information found in BasicInformation.json")
+        return None
     
-    if extract_zip_file(dest_path, extract_dir):
-        # Rename files before processing
-        rename_files_in_directory(extract_dir)
-        
-        # Read basic info and update other JSON files
-        basic_info = read_basic_info(extract_dir)
-        if basic_info:
-            system_info = extract_system_info(basic_info)
-            if system_info:
-                update_json_files(extract_dir, system_info)
-            else:
-                print("No system information found in BasicInformation.json")
-            display_basic_info(basic_info)
+    return system_info
+
+def update_json_with_system_info(extract_dir: Path, system_info: Dict[str, Any]) -> None:
+    """
+    Update all JSON files with system information and display basic info.
+    """
+    update_json_files(extract_dir, system_info)
+
+def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
+    """
+    Process a single zip file through the following steps:
+    1. Display file information
+    2. Set up extraction directory
+    3. Extract zip file
+    4. Rename files
+    5. Process basic information
+    6. Update JSON files with system info
+    """
+    print(f"\nProcessing: {zip_path.name}")
+    
+    # Step 1: Process file information
+    process_file_info(zip_path)
+    
+    # Step 2: Set up extraction directory
+    dest_path, extract_dir = setup_extraction_directory(zip_path, runtime_zip_dir)
+    
+    # Step 3: Extract zip file
+    if not extract_zip_file(dest_path, extract_dir):
+        print(f"Failed to extract {zip_path.name}")
+        return
+    
+    # Step 4: Rename files
+    rename_files_in_directory(extract_dir)
+    
+    # Step 5: Process basic information
+    system_info = process_basic_information(extract_dir)
+    if not system_info:
+        return
+    
+    # Step 6: Update JSON files with system info
+    update_json_with_system_info(extract_dir, system_info)
 
 def process_zip_files():
     """Main function to process all zip files."""

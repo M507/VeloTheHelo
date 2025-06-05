@@ -276,7 +276,7 @@ def create_artifact_spec(artifact_name: str, spec_generator: SpecFileGenerator) 
         return ""
 
 def build_collector(artifact_name: str, spec_path: str, collector_manager: CollectorManager) -> bool:
-    """Build a collector executable for a single artifact."""
+    """Build a collector executable for a single artifact and run it."""
     try:
         print_info(f"\n{SUCCESS_EMOJI} Building collector executable for {artifact_name}")
         collector_path = collector_manager.create_collector(spec_path)
@@ -285,10 +285,20 @@ def build_collector(artifact_name: str, spec_path: str, collector_manager: Colle
             return False
 
         print_success(f"Successfully created collector: {collector_path}")
-        return True
+
+        # Import and run the collector workflow
+        print_info(f"\n{SUCCESS_EMOJI} Running collector workflow")
+        try:
+            from run_collector import main as run_collector_main
+            run_collector_main()
+            print_success(f"Successfully ran collector workflow for {artifact_name}")
+            return True
+        except Exception as e:
+            print_error(f"Failed to run collector workflow: {e}")
+            return False
 
     except Exception as e:
-        print_error(f"Error building collector for {artifact_name}: {e}")
+        print_error(f"Error building and running collector for {artifact_name}: {e}")
         return False
 
 def process_artifacts(artifacts: List[str], spec_generator: SpecFileGenerator, 

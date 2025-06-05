@@ -4,7 +4,7 @@ import paramiko
 import hashlib
 import warnings
 import shutil
-from dotenv import load_dotenv
+from config import Config, init_directories, get_winrm_credentials
 from cryptography.utils import CryptographyDeprecationWarning
 
 # Suppress deprecation warnings
@@ -37,16 +37,6 @@ def print_info(message):
 def print_warning(message):
     """Print a warning message in yellow"""
     print(f"{YELLOW}{message}{RESET}")
-
-def load_environment():
-    """Load environment variables from .env file"""
-    load_dotenv()
-    return {
-        'host': os.getenv('WINRM_HOST'),
-        'username': os.getenv('WINRM_USERNAME'),
-        'password': os.getenv('WINRM_PASSWORD'),
-        'ssh_port': int(os.getenv('SSH_PORT', '22'))  # Default SSH port is 22
-    }
 
 def create_winrm_session(credentials):
     """Create a WinRM session with the provided credentials"""
@@ -440,8 +430,11 @@ def cleanup_remote_files(session):
         return False
 
 def main():
-    # Load environment variables
-    credentials = load_environment()
+    # Load credentials from centralized config
+    credentials = get_winrm_credentials()
+    
+    # Add collector file path from config
+    credentials['local_file'] = Config.get('COLLECTOR_FILE')
     
     # Verify all required credentials are present
     required_vars = ['host', 'username', 'password']
@@ -452,6 +445,9 @@ def main():
         return
     
     try:
+        # Initialize required directories
+        init_directories()
+        
         # Create WinRM session
         winrm_session = create_winrm_session(credentials)
         
@@ -469,7 +465,7 @@ def main():
                 print_warning("Proceeding despite cleanup issues...")
             
             # Copy and verify the Velociraptor collector file
-            local_file = "datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe"
+            local_file = credentials['local_file']
             remote_file = "C:\\Windows\\Temp\\Collector_velociraptor.exe"
             print("\nStarting file copy operation...")
             if copy_and_verify_file(winrm_session, credentials, local_file, remote_file):

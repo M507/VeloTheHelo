@@ -3,6 +3,7 @@ datastore/
 runtime*
 runtime/
 runtime_zip/
+testing_specs/
 
 # specs
 specs

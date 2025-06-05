@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import json
 from urllib.parse import unquote
-from typing import Tuple, Optional, Dict, Any, List
+from typing import Tuple, Optional, Dict, Any, List, Set
 
 def create_directory(directory: Path) -> None:
     """Create directory if it doesn't exist."""
@@ -200,10 +200,53 @@ def extract_system_info(basic_info: Dict[str, Any]) -> Dict[str, Any]:
     search_dict(basic_info, keys_to_extract)
     return system_info
 
-def update_json_files(extract_dir: Path, system_info: Dict[str, Any]) -> None:
+def get_source_type(filename: str) -> str:
     """
-    Update all JSON files in the results directory with system information.
-    Each line in the files is treated as a separate JSON object.
+    Extract the source type from the filename.
+    Example: 'Generic.Client.Info.Users.json' -> 'Users'
+    """
+    # Remove .json extension and split by dots
+    parts = filename.replace('.json', '').split('.')
+    # Return the last part as source type
+    return parts[-1] if parts else 'Unknown'
+
+def update_json_with_source_type(file_path: Path) -> None:
+    """
+    Add source_type to each JSON line based on the filename.
+    """
+    source_type = get_source_type(file_path.name)
+    
+    try:
+        # Read all lines from the file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        # Process each line and add source_type
+        updated_lines = []
+        for line in lines:
+            try:
+                # Parse the JSON object from the line
+                json_obj = json.loads(line)
+                # Add source_type to the object
+                json_obj['source_type'] = source_type
+                # Convert back to JSON string
+                updated_lines.append(json.dumps(json_obj))
+            except json.JSONDecodeError:
+                # If line is not valid JSON, keep it as is
+                updated_lines.append(line)
+        
+        # Write the updated lines back to the file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(updated_lines) + '\n')
+        
+        print(f"Added source_type '{source_type}' to: {file_path.name}")
+        
+    except Exception as e:
+        print(f"Error updating source_type in {file_path.name}: {str(e)}")
+
+def update_json_with_system_info(extract_dir: Path, system_info: Dict[str, Any]) -> None:
+    """
+    Update all JSON files with system information and source type.
     """
     results_dir = extract_dir / 'results'
     if not results_dir.exists():
@@ -219,6 +262,10 @@ def update_json_files(extract_dir: Path, system_info: Dict[str, Any]) -> None:
             continue
             
         try:
+            # First add source_type to each line
+            update_json_with_source_type(file_path)
+            
+            # Then add system info
             # Read all lines from the file
             with open(file_path, 'r', encoding='utf-8') as f:
                 lines = [line.strip() for line in f if line.strip()]
@@ -241,7 +288,7 @@ def update_json_files(extract_dir: Path, system_info: Dict[str, Any]) -> None:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(updated_lines) + '\n')
             
-            print(f"Updated: {file_path.name}")
+            print(f"Updated with system info: {file_path.name}")
             
         except Exception as e:
             print(f"Error updating {file_path.name}: {str(e)}")
@@ -281,12 +328,6 @@ def process_basic_information(extract_dir: Path) -> Optional[Dict[str, Any]]:
     
     return system_info
 
-def update_json_with_system_info(extract_dir: Path, system_info: Dict[str, Any]) -> None:
-    """
-    Update all JSON files with system information and display basic info.
-    """
-    update_json_files(extract_dir, system_info)
-
 def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     """
     Process a single zip file through the following steps:
@@ -321,6 +362,87 @@ def process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
     # Step 6: Update JSON files with system info
     update_json_with_system_info(extract_dir, system_info)
 
+def check_process_single_zip(zip_path: Path, runtime_zip_dir: Path) -> None:
+    """
+    Validate that all JSON files in the extracted directory have the required keys.
+    Only prints issues found during validation.
+    """
+    print(f"\nValidating processed files for: {zip_path.name}")
+    
+    # Define required keys that should be present in each JSON line
+    required_keys = {
+        'source_type',
+        'Hostname',
+        'OS',
+        'Platform',
+        'PlatformVersion',
+        'Fqdn',
+        'MACAddresses'
+    }
+    
+    extract_dir = runtime_zip_dir / zip_path.stem
+    results_dir = extract_dir / 'results'
+    
+    if not results_dir.exists():
+        print(f"Error: Results directory not found for {zip_path.name}")
+        return
+    
+    basic_info_filename = 'Generic.Client.Info.BasicInformation.json'
+    issues_found = False
+    
+    # Process each JSON file
+    for file_path in results_dir.glob('*.json'):
+        # Skip the BasicInformation.json file
+        if file_path.name == basic_info_filename:
+            continue
+            
+        try:
+            # Read the file line by line
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = [line.strip() for line in f if line.strip()]
+            
+            # Check each line
+            for line_number, line in enumerate(lines, 1):
+                try:
+                    json_obj = json.loads(line)
+                    
+                    # Verify source_type matches filename
+                    expected_source_type = get_source_type(file_path.name)
+                    actual_source_type = json_obj.get('source_type')
+                    if actual_source_type != expected_source_type:
+                        issues_found = True
+                        print(f"Issue in {file_path.name}, line {line_number}:")
+                        print(f"  - Incorrect source_type: expected '{expected_source_type}', got '{actual_source_type}'")
+                    
+                    # Check for missing required keys
+                    missing_keys = required_keys - set(json_obj.keys())
+                    if missing_keys:
+                        issues_found = True
+                        print(f"Issue in {file_path.name}, line {line_number}:")
+                        print(f"  - Missing required keys: {', '.join(sorted(missing_keys))}")
+                    
+                    # Check for empty or None values in required keys
+                    empty_keys = {
+                        key for key in required_keys - missing_keys
+                        if json_obj.get(key) is None or json_obj.get(key) == ''
+                    }
+                    if empty_keys:
+                        issues_found = True
+                        print(f"Issue in {file_path.name}, line {line_number}:")
+                        print(f"  - Empty values for keys: {', '.join(sorted(empty_keys))}")
+                    
+                except json.JSONDecodeError:
+                    issues_found = True
+                    print(f"Issue in {file_path.name}, line {line_number}:")
+                    print("  - Invalid JSON format")
+                    
+        except Exception as e:
+            issues_found = True
+            print(f"Error processing {file_path.name}: {str(e)}")
+    
+    if not issues_found:
+        print(f"Validation successful: No issues found in {zip_path.name}")
+
 def process_zip_files():
     """Main function to process all zip files."""
     # Setup directories
@@ -345,6 +467,8 @@ def process_zip_files():
     # Process each zip file
     for zip_path in zip_files:
         process_single_zip(zip_path, runtime_zip_dir)
+        # Validate the processing
+        check_process_single_zip(zip_path, runtime_zip_dir)
 
 if __name__ == "__main__":
     process_zip_files() 

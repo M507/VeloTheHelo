@@ -21,6 +21,7 @@ from config import Config, init_directories, get_winrm_credentials
 from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI, logger
 import re
 import subprocess
+from process_zip_files import process_single_zip, check_process_single_zip
 
 # Suppress deprecation warnings
 warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
@@ -1336,25 +1337,42 @@ class CollectorManager:
             return result.std_out.decode('utf-8').strip()
         return None
 
-    def process_zip_files(self) -> None:
-        """Process all zip files in runtime directory"""
-        runtime_zip_dir = Path('runtime_zip')
-        runtime_dir = Path('runtime')
+    def process_zip_files(self, input_dir: str = 'runtime', output_dir: str = 'runtime_zip') -> bool:
+        """Process all zip files in input directory and save results to output directory
+        Args:
+            input_dir: Directory containing zip files to process. Defaults to 'runtime'
+            output_dir: Directory to save processed files. Defaults to 'runtime_zip'
+        Returns:
+            bool: True if processing was successful, False otherwise
+        """
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
         
-        runtime_zip_dir.mkdir(exist_ok=True)
+        print_info(f"\nProcessing zip files from: {input_dir}")
+        print_info(f"Saving results to: {output_dir}")
         
-        if not runtime_dir.exists():
-            print_error(f"Error: Source directory '{runtime_dir}' does not exist!")
-            return
+        output_dir.mkdir(exist_ok=True)
         
-        zip_files = list(runtime_dir.glob('*.zip'))
+        if not input_dir.exists():
+            print_error(f"Error: Source directory '{input_dir}' does not exist!")
+            return False
+        
+        zip_files = list(input_dir.glob('*.zip'))
         if not zip_files:
-            print_error("No zip files found in runtime directory!")
-            return
+            print_error(f"No zip files found in {input_dir}!")
+            return False
         
+        success = True
         for zip_path in zip_files:
-            self.process_single_zip(zip_path, runtime_zip_dir)
-            self.check_process_single_zip(zip_path)
+            try:
+                process_single_zip(zip_path, output_dir)
+                if not check_process_single_zip(zip_path, output_dir):
+                    success = False
+            except Exception as e:
+                print_error(f"Error processing {zip_path.name}: {str(e)}")
+                success = False
+        
+        return success
 
     def run_windows_test(self) -> bool:
         """Run Windows testing functionality"""
@@ -1912,13 +1930,20 @@ def main():
                       default='batch', help='Operation mode')
     parser.add_argument('--artifacts', help='Comma-separated list of artifacts to process')
     parser.add_argument('--build', action='store_true', help='Build collectors for artifacts')
+    parser.add_argument('--input-dir', default='runtime',
+                      help='Directory containing zip files to process (for process_zip mode). Defaults to "runtime"')
+    parser.add_argument('--output-dir', default='runtime_zip',
+                      help='Directory to save processed files (for process_zip mode). Defaults to "runtime_zip"')
     
     args = parser.parse_args()
     
     manager = CollectorManager(mode=args.mode)
     
-    artifacts = args.artifacts.split(',') if args.artifacts else None
-    success = manager.run(artifacts=artifacts, build_collectors=args.build)
+    if args.mode == 'process_zip':
+        success = manager.process_zip_files(args.input_dir, args.output_dir)
+    else:
+        artifacts = args.artifacts.split(',') if args.artifacts else None
+        success = manager.run(artifacts=artifacts, build_collectors=args.build)
     
     sys.exit(0 if success else 1)
 

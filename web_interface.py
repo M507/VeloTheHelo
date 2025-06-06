@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, safe_join, send_file, make_response
 import os
 import json
 from collector_manager import CollectorManager
@@ -555,7 +555,7 @@ def process_profile_artifacts(artifacts, build_collectors):
         app.logger.error(f"Error in process_profile_artifacts: {str(e)}")
         collector_manager.update_status(f"Error processing artifacts: {str(e)}", True)
         collector_manager.status['completed'] = True
-        collector_manager.status['processing'] = False  # Reset processing flag on error
+        collector_manager.status['processing'] = False  # Reset processing flag
 
 @app.route('/profile-status')
 def get_profile_status():
@@ -626,10 +626,238 @@ def initialize_app():
         init_directories()
         # Ensure runtime_zip directory exists
         os.makedirs('runtime_zip', exist_ok=True)
+        # Ensure collectors directory exists
+        os.makedirs('collectors', exist_ok=True)
+        app.logger.info("Application directories initialized successfully")
         return True
     except Exception as e:
-        print(f"Error initializing application: {e}")
+        app.logger.error(f"Error initializing application: {e}")
         return False
+
+def investigate_directory(directory: str) -> None:
+    """Investigate a directory and log its contents"""
+    try:
+        # Convert to forward slashes
+        directory = directory.replace('\\', '/')
+        app.logger.info(f"\n=== Directory Investigation for: {directory} ===")
+        app.logger.info(f"Directory exists: {os.path.exists(directory)}")
+        app.logger.info(f"Is directory: {os.path.isdir(directory)}")
+        app.logger.info(f"Absolute path: {os.path.abspath(directory).replace('\\', '/')}")
+        
+        if os.path.exists(directory):
+            app.logger.info("Directory contents:")
+            for root, dirs, files in os.walk(directory):
+                # Convert paths to forward slashes
+                root = root.replace('\\', '/')
+                app.logger.info(f"\nIn directory: {root}")
+                if dirs:
+                    # Convert all directory paths
+                    dirs_with_slashes = [d.replace('\\', '/') for d in dirs]
+                    app.logger.info(f"Subdirectories: {dirs_with_slashes}")
+                if files:
+                    app.logger.info(f"Files: {files}")
+                    # Log details of each file
+                    for file in files:
+                        file_path = os.path.join(root, file).replace('\\', '/')
+                        try:
+                            size = os.path.getsize(file_path)
+                            is_executable = os.access(file_path, os.X_OK)
+                            app.logger.info(f"  {file}:")
+                            app.logger.info(f"    - Size: {size} bytes")
+                            app.logger.info(f"    - Executable: {is_executable}")
+                            app.logger.info(f"    - Last modified: {datetime.fromtimestamp(os.path.getmtime(file_path))}")
+                        except Exception as e:
+                            app.logger.error(f"Error getting file details for {file}: {str(e)}")
+        else:
+            app.logger.warning("Directory does not exist!")
+    except Exception as e:
+        app.logger.error(f"Error investigating directory: {str(e)}")
+
+def find_latest_collector(
+    search_dir: str = "./collectors",
+    file_pattern: str = "collector",
+    file_extension: str = ".exe",
+    recursive: bool = True
+) -> str:
+    """Find the latest collector file based on specified parameters."""
+    # Convert search_dir to use forward slashes
+    search_dir = os.path.abspath(search_dir).replace('\\', '/')
+    app.logger.info(f"Searching for latest collector in {search_dir} "
+                   f"(pattern: {file_pattern}, extension: {file_extension}, "
+                   f"recursive: {recursive})")
+    
+    if not os.path.exists(search_dir):
+        app.logger.error(f"Search directory does not exist: {search_dir}")
+        return None
+        
+    collector_files = []
+    
+    try:
+        if recursive:
+            # Recursive search through all subdirectories
+            for root, _, files in os.walk(search_dir):
+                # Convert root path to forward slashes
+                root = root.replace('\\', '/')
+                for file in files:
+                    if file.lower().endswith(file_extension.lower()) and file_pattern.lower() in file.lower():
+                        file_path = os.path.join(root, file).replace('\\', '/')
+                        collector_files.append((file_path, os.path.getmtime(file_path)))
+                        app.logger.info(f"Found matching file: {file_path}")
+        else:
+            # Non-recursive search, only in the specified directory
+            for file in os.listdir(search_dir):
+                if file.lower().endswith(file_extension.lower()) and file_pattern.lower() in file.lower():
+                    file_path = os.path.join(search_dir, file).replace('\\', '/')
+                    if os.path.isfile(file_path):
+                        collector_files.append((file_path, os.path.getmtime(file_path)))
+                        app.logger.info(f"Found matching file: {file_path}")
+    
+        if not collector_files:
+            app.logger.warning(f"No matching files found in {search_dir}")
+            return None
+            
+        # Return the most recently modified collector file
+        latest_collector = sorted(collector_files, key=lambda x: x[1], reverse=True)[0][0]
+        app.logger.info(f"Latest matching file is: {latest_collector}")
+        return latest_collector
+        
+    except Exception as e:
+        app.logger.error(f"Error while searching for collector files: {str(e)}")
+        return None
+
+def is_safe_path(basedir: str, path: str) -> bool:
+    """Check if the path is safe (no directory traversal)"""
+    try:
+        # Convert paths to use forward slashes
+        basedir = os.path.realpath(basedir).replace('\\', '/')
+        path = os.path.realpath(path).replace('\\', '/')
+        # Check if the path is within the base directory
+        common_prefix = os.path.commonprefix([basedir, path])
+        return common_prefix == basedir
+    except Exception:
+        return False
+
+def is_valid_collector(file_path: str) -> bool:
+    """Check if the file appears to be a valid collector executable."""
+    try:
+        # Convert path to use forward slashes
+        file_path = file_path.replace('\\', '/')
+        # Check file size (between 1KB and 100MB)
+        size = os.path.getsize(file_path)
+        if not (1024 <= size <= 100 * 1024 * 1024):
+            app.logger.warning(f"Invalid collector file size: {size} bytes")
+            return False
+
+        # Check file extension
+        if not file_path.lower().endswith('.exe'):
+            app.logger.warning("Invalid collector file extension")
+            return False
+
+        # Check if file is actually executable (basic check)
+        if not os.access(file_path, os.X_OK):
+            app.logger.warning("File is not executable")
+            return False
+
+        return True
+    except Exception as e:
+        app.logger.error(f"Error validating collector: {str(e)}")
+        return False
+
+@app.route('/download-collector')
+def download_collector():
+    """Download the latest collector file"""
+    try:
+        app.logger.info("\n=== Starting Download Collector Request ===")
+        
+        # Get absolute path to the application root directory
+        app_root = os.path.abspath(os.getcwd())
+        app.logger.info(f"Application root: {app_root}")
+        
+        # Use Flask's safe_join to create a safe path to collectors directory
+        collectors_dir = safe_join(app_root, 'collectors')
+        if collectors_dir is None:
+            error_msg = "Invalid collectors directory path"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 400
+            
+        collectors_dir = collectors_dir.replace('\\', '/')
+        app.logger.info(f"Safe collectors directory: {collectors_dir}")
+        
+        if not os.path.exists(collectors_dir):
+            error_msg = "Collectors directory does not exist"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 404
+
+        # Find latest collector
+        collector_path = find_latest_collector(
+            search_dir=collectors_dir,
+            file_pattern="collector",
+            file_extension=".exe",
+            recursive=True
+        )
+        
+        if not collector_path:
+            error_msg = "No collector file found in collectors directory"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 404
+            
+        # Get filename and verify file
+        filename = os.path.basename(collector_path)
+        full_path = safe_join(collectors_dir, filename)
+        if full_path is None:
+            error_msg = "Invalid collector file path"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 400
+            
+        full_path = full_path.replace('\\', '/')
+        app.logger.info(f"\n=== File Details ===")
+        app.logger.info(f"Full path: {full_path}")
+        app.logger.info(f"Filename: {filename}")
+        
+        if not os.path.isfile(full_path):
+            error_msg = f"Collector file not found at {full_path}"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 404
+            
+        try:
+            app.logger.info("\n=== Attempting Download ===")
+            
+            # Get file size
+            file_size = os.path.getsize(full_path)
+            app.logger.info(f"File size: {file_size} bytes")
+            
+            # Read file in binary mode
+            with open(full_path, 'rb') as f:
+                file_data = f.read()
+            
+            # Create response with file data
+            response = make_response(file_data)
+            
+            # Set headers
+            response.headers['Content-Type'] = 'application/octet-stream'
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.headers['Content-Length'] = file_size
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            app.logger.info("Successfully created response")
+            app.logger.info(f"Response headers: {dict(response.headers)}")
+            
+            return response
+            
+        except Exception as e:
+            error_msg = f"Error sending file: {str(e)}"
+            app.logger.error(f"\n=== Download Error Details ===")
+            app.logger.error(f"Error message: {str(e)}")
+            app.logger.error(f"Full path: {full_path}")
+            app.logger.error(f"Filename: {filename}")
+            return jsonify({'error': error_msg}), 500
+            
+    except Exception as e:
+        error_msg = f"Unexpected error in download_collector: {str(e)}"
+        app.logger.error(error_msg)
+        return jsonify({'error': error_msg}), 500
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Velociraptor Collector Web Interface')

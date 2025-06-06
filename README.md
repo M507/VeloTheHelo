@@ -227,7 +227,6 @@ The command line interface uses the following default directories:
 - `specs/`: Directory for artifact specifications
 
 
-
 ## Output Format
 
 #### When processing ZIP files, the tool will:

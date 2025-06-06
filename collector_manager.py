@@ -711,6 +711,12 @@ class CollectorManager:
             if not self.pull_files_by_pattern(collection_pattern):
                 print_error("Failed to pull collection zip files")
                 return False
+
+            # Pull all collector log files
+            print_info("\nPulling Collector log files...")
+            log_pattern = "C:\\Windows\\Temp\\Collector_*.log"
+            if not self.pull_files_by_pattern(log_pattern):
+                print_warning("Failed to pull log files, but continuing...")
             
             return True
             

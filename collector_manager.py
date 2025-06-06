@@ -20,6 +20,7 @@ from cryptography.utils import CryptographyDeprecationWarning
 from config import Config, init_directories, get_winrm_credentials
 from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI, logger
 import re
+import subprocess
 
 # Suppress deprecation warnings
 warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
@@ -144,6 +145,65 @@ class SpecFileGenerator:
             print_error(f"Error creating spec file for {artifact}: {e}")
             return None
 
+    def create_combined_spec_file(self, artifacts: List[str], spec_name: str = "combined_artifacts") -> Optional[str]:
+        """Create a spec file that includes multiple artifacts."""
+        print_info(f"\nCreating combined spec file for artifacts: {', '.join(artifacts)}")
+        try:
+            # Create output directory if it doesn't exist
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
+                print_success(f"Created output directory: {self.output_dir}")
+
+            # Read template file
+            print_info(f"Reading template file: {self.template_path}")
+            template_lines, self.template_encoding = self.try_read_file(self.template_path)
+            if not template_lines:
+                print_error("Failed to read template file")
+                return None
+
+            # Find section markers
+            print_info("Looking for section markers")
+            start, end = self.find_section_markers(template_lines)
+            if start == -1 or end == -1:
+                print_error("Could not find section markers in template")
+                return None
+
+            # Split template into header and footer
+            print_info("Splitting template into sections")
+            header_lines = template_lines[:start + 2]  # Include the marker and "Artifacts:" line
+            footer_lines = template_lines[end:]
+
+            # Create the new content
+            print_info("Creating new content with multiple artifacts")
+            new_content = header_lines.copy()
+            
+            # Add each artifact to the spec
+            for artifact in artifacts:
+                new_content.append(f" {artifact}:\n")
+                new_content.append("    All: Y\n")
+            
+            # Add Generic.Client.Info
+            new_content.append(" Generic.Client.Info:\n")
+            new_content.append("    All: Y\n")
+            new_content.extend(footer_lines)
+            
+            # Create a descriptive filename
+            spec_filename = f"{spec_name}.yaml"
+            spec_path = os.path.join(self.output_dir, spec_filename)
+            
+            print_info(f"Writing combined spec file: {spec_path}")
+            print_info(f"Content length: {len(new_content)} lines")
+            
+            with open(spec_path, 'w', newline='', encoding=self.template_encoding or 'utf-8') as spec_file:
+                spec_file.writelines(new_content)
+            
+            print_success(f"Successfully created combined spec file with {len(artifacts)} artifacts")
+            return spec_path
+            
+        except Exception as e:
+            print_error(f"Error creating combined spec file: {e}")
+            return None
+
 class CollectorManager:
     def __init__(self, mode='batch'):
         """Initialize the CollectorManager with specified mode"""
@@ -169,12 +229,12 @@ class CollectorManager:
         print_success("CollectorManager initialized successfully")
         logger.debug("CollectorManager initialized with empty status")
 
-    def clean_all_directories(self) -> bool:
+    @staticmethod
+    def clean_all_directories() -> bool:
         """Clean all working directories"""
         print_info("\nStarting directory cleanup...")
         logger.info("Starting directory cleanup")
         try:
-            self.update_status("Cleaning working directories...")
             directories = [
                 Config.get('ARTIFACT_SPECS_DIR'),
                 'collectors',
@@ -196,14 +256,12 @@ class CollectorManager:
                 except Exception as e:
                     print_error(f"Failed to clean directory {directory}: {str(e)}")
                     logger.error(f"Failed to clean directory {directory}: {str(e)}")
-                    self.update_status(f"Error cleaning {directory} directory: {e}", True)
                     return False
             print_success("All directories cleaned successfully")
             return True
         except Exception as e:
             print_error(f"Directory cleanup failed: {str(e)}")
             logger.error(f"Directory cleanup failed: {str(e)}")
-            self.update_status(f"Error in clean_all_directories: {str(e)}", True)
             return False
 
     def initialize_connections(self) -> bool:
@@ -301,10 +359,14 @@ class CollectorManager:
                 Config.get('VELO_DATASTORE'),
                 "Collector_velociraptor-v0.72.4-windows-amd64.exe"
             )
+            
+            # Create a safe filename by replacing spaces and special characters
+            safe_name = artifact_name.replace(" ", "_").replace(".", "_")
             target_collector = os.path.join(
                 collectors_dir,
-                f"{os.path.splitext(os.path.basename(spec_path))[0]}_collector.exe"
+                f"collector_{safe_name}.exe"
             )
+            
             print_info(f"Source collector path: {source_collector}")
             print_info(f"Target collector path: {target_collector}")
             logger.debug(f"Source collector path: {source_collector}")
@@ -327,50 +389,73 @@ class CollectorManager:
                 self.update_status(f"Velociraptor config not found at: {velo_config}", True)
                 return None
 
-            # Construct and log the full command
-            cmd = f"{velo_binary} --config {velo_config} collector "
+            # Construct command as a list for subprocess
+            cmd = [velo_binary, "--config", velo_config, "collector"]
             if velo_datastore:
-                cmd += f"--datastore {velo_datastore} "
-            cmd += spec_path
+                cmd.extend(["--datastore", velo_datastore])
+            cmd.append(spec_path)
             
-            print_info(f"\nExecuting build command:\n{cmd}")
-            logger.info(f"Build command: {cmd}")
-            self.update_status(f"Running build command: {cmd}")
+            print_info(f"\nExecuting build command:\n{' '.join(cmd)}")
+            logger.info(f"Build command: {' '.join(cmd)}")
+            self.update_status(f"Running build command: {' '.join(cmd)}")
             
-            # Execute the command
-            result = os.system(cmd)
-            print_info(f"Build command result code: {result}")
-            logger.debug(f"Build command result: {result}")
-            
-            if result == 0:
-                if os.path.exists(source_collector):
-                    # Move the collector from datastore to collectors directory
-                    try:
-                        shutil.copy2(source_collector, target_collector)
-                        file_size = os.path.getsize(target_collector)
-                        success_msg = f"Successfully copied collector to {target_collector} (Size: {file_size/1024:.2f} KB)"
-                        print_success(success_msg)
-                        logger.info(success_msg)
-                        self.update_status(success_msg)
-                        return target_collector
-                    except Exception as e:
-                        error_msg = f"Failed to copy collector from {source_collector} to {target_collector}: {str(e)}"
+            # Execute the command using subprocess.run
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False  # Don't raise exception on non-zero exit
+                )
+                print_info(f"Build command result code: {result.returncode}")
+                logger.debug(f"Build command result: {result.returncode}")
+                
+                if result.stderr:
+                    print_error(f"Command stderr: {result.stderr}")
+                    logger.error(f"Command stderr: {result.stderr}")
+                
+                if result.stdout:
+                    print_info(f"Command stdout: {result.stdout}")
+                    logger.info(f"Command stdout: {result.stdout}")
+                
+                if result.returncode == 0:
+                    if os.path.exists(source_collector):
+                        # Move the collector from datastore to collectors directory
+                        try:
+                            shutil.copy2(source_collector, target_collector)
+                            file_size = os.path.getsize(target_collector)
+                            success_msg = f"Successfully copied collector to {target_collector} (Size: {file_size/1024:.2f} KB)"
+                            print_success(success_msg)
+                            logger.info(success_msg)
+                            self.update_status(success_msg)
+                            return target_collector
+                        except Exception as e:
+                            error_msg = f"Failed to copy collector from {source_collector} to {target_collector}: {str(e)}"
+                            print_error(error_msg)
+                            logger.error(error_msg)
+                            self.update_status(error_msg, True)
+                            return None
+                    else:
+                        error_msg = f"Build command succeeded but collector not found at: {source_collector}"
                         print_error(error_msg)
                         logger.error(error_msg)
                         self.update_status(error_msg, True)
                         return None
                 else:
-                    error_msg = f"Build command succeeded but collector not found at: {source_collector}"
+                    error_msg = f"Failed to build collector. Command exit code: {result.returncode}"
+                    if result.stderr:
+                        error_msg += f"\nError: {result.stderr}"
                     print_error(error_msg)
                     logger.error(error_msg)
                     self.update_status(error_msg, True)
                     return None
-            else:
-                error_msg = f"Failed to build collector. Command exit code: {result}"
+            except Exception as e:
+                error_msg = f"Failed to execute build command: {str(e)}"
                 print_error(error_msg)
                 logger.error(error_msg)
                 self.update_status(error_msg, True)
                 return None
+            
         except Exception as e:
             print_error(f"Collector build failed: {str(e)}")
             logger.error(f"Collector build failed: {str(e)}")
@@ -380,19 +465,32 @@ class CollectorManager:
     def push_and_execute_collector(self, local_path: str, artifact_name: str) -> bool:
         """Push collector to remote system and execute it"""
         try:
+            logger.info(f"Starting push and execute operation for artifact: {artifact_name}")
+            logger.debug(f"Local collector path: {local_path}")
+            
             if not os.path.exists(local_path):
-                self.update_status(f"Collector file not found at: {local_path}", True)
+                error_msg = f"Collector file not found at: {local_path}"
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
                 return False
 
             remote_file = f"C:\\Windows\\Temp\\Collector_{artifact_name}.exe"
             log_file = f"C:\\Windows\\Temp\\Collector_{artifact_name}.log"
             
+            logger.debug(f"Remote collector path: {remote_file}")
+            logger.debug(f"Remote log file path: {log_file}")
+            
             self.update_status(f"Pushing collector to {remote_file}")
+            logger.info(f"Copying collector to remote system: {remote_file}")
             if not self.copy_and_verify_file(self.winrm_session, self.credentials, local_path, remote_file):
-                self.update_status("Failed to copy collector to remote system", True)
+                error_msg = "Failed to copy collector to remote system"
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
                 return False
+            logger.info("Successfully copied collector to remote system")
             
             self.update_status("Executing collector")
+            logger.info("Starting collector execution")
             ps_command = f"""
             $ErrorActionPreference = 'Stop'
             try {{
@@ -409,45 +507,67 @@ class CollectorManager:
             }}
             """
             
+            logger.debug("Executing PowerShell command for collector")
             result = self.execute_command(self.winrm_session, ps_command)
             if result['status_code'] == 0 and "Success" in result['stdout']:
+                logger.info("Collector execution completed successfully")
                 self.update_status("Execution completed")
+                
+                logger.debug("Waiting for file operations to complete")
                 self.winrm_session.run_ps("Start-Sleep -Seconds 2")
                 
+                logger.debug(f"Checking for log file: {log_file}")
                 check_file = self.winrm_session.run_ps(f"Test-Path '{log_file}'")
                 if check_file.std_out.decode('utf-8').strip().lower() != 'true':
-                    self.update_status(f"File {log_file} not found after execution", True)
+                    error_msg = f"File {log_file} not found after execution"
+                    logger.error(error_msg)
+                    self.update_status(error_msg, True)
                     return False
+                logger.info("Log file found on remote system")
                 
                 self.update_status(f"Pulling log file {log_file}...")
+                logger.info("Starting log file retrieval")
                 if not self.clean_runtime_directory():
+                    logger.error("Failed to clean runtime directory")
                     return False
                 
+                logger.debug("Creating SSH client for file transfer")
                 ssh = self.create_ssh_client(self.credentials)
                 if not ssh:
+                    logger.error("Failed to create SSH client")
                     return False
                 
                 try:
                     sftp = ssh.open_sftp()
                     local_filename = os.path.basename(log_file)
                     local_path = os.path.join("./runtime", local_filename)
+                    logger.debug(f"Pulling log file to: {local_path}")
                     sftp.get(log_file, local_path)
+                    logger.info(f"Successfully pulled log file to: {local_path}")
                     self.update_status(f"Log file pulled successfully to {local_path}")
                     
                     self.update_status("Verifying execution output...")
+                    logger.info("Starting execution output verification")
                     if self.check_execution_output(local_path):
-                        self.update_status("Execution verification completed successfully")
+                        success_msg = "Execution verification completed successfully"
+                        logger.info(success_msg)
+                        self.update_status(success_msg)
                         return True
+                    logger.error("Execution verification failed")
                     return False
                 finally:
+                    logger.debug("Closing SFTP and SSH connections")
                     sftp.close()
                     ssh.close()
             else:
                 error_msg = result['stderr'] if result['stderr'] else result['stdout']
+                logger.error(f"Execution failed: {error_msg}")
                 self.update_status(f"Execution failed: {error_msg}", True)
                 return False
         except Exception as e:
-            self.update_status(f"Failed to execute file or pull results: {str(e)}", True)
+            error_msg = f"Failed to execute file or pull results: {str(e)}"
+            logger.error(error_msg, exc_info=True)  # Include full exception traceback
+            self.update_status(error_msg, True)
             return False
 
     def pull_collection_data(self) -> bool:
@@ -930,7 +1050,7 @@ class CollectorManager:
                     
                     # Download the file
                     sftp.get(file_to_pull, local_path)
-                    print_success(f"File pulled successfully to {local_path}")
+                    self.update_status(f"File pulled successfully to {local_path}")
                     
                     # Check the output file
                     print_info("\nVerifying execution output...")
@@ -943,6 +1063,7 @@ class CollectorManager:
                     return False
                     
                 finally:
+                    logger.debug("Closing SFTP and SSH connections")
                     sftp.close()
                     ssh.close()
             else:
@@ -1104,16 +1225,48 @@ class CollectorManager:
     def create_ssh_client(self, credentials: Dict[str, str]) -> Optional[paramiko.SSHClient]:
         """Create SSH client"""
         try:
+            # Log all connection parameters
+            logger.info("Creating SSH client with parameters:")
+            
+            # Check if credentials is None
+            if credentials is None:
+                logger.error("Credentials object is None")
+                print_error("Credentials object is None")
+                return None
+                
+            # Check if credentials is empty
+            if not credentials:
+                logger.error("Credentials dictionary is empty")
+                print_error("Credentials dictionary is empty")
+                return None
+            
+            # Check for required credential fields
+            required_fields = ['host', 'username', 'password']
+            missing_fields = [field for field in required_fields if not credentials.get(field)]
+            if missing_fields:
+                logger.error(f"Missing required credentials: {', '.join(missing_fields)}")
+                print_error(f"Missing required credentials: {', '.join(missing_fields)}")
+                return None
+            
+            logger.info(f"Host: {credentials['host']}")
+            logger.info(f"Username: {credentials['username']}")
+            logger.info(f"Port: {credentials.get('ssh_port', 22)}")
+            logger.debug("Password: [REDACTED]")  # Don't log the actual password
+            
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            logger.info("Attempting SSH connection...")
             ssh.connect(
                 credentials['host'],
                 port=int(credentials.get('ssh_port', 22)),
                 username=credentials['username'],
                 password=credentials['password']
             )
+            logger.info("SSH connection established successfully")
             return ssh
         except Exception as e:
+            logger.error(f"Failed to establish SSH connection: {str(e)}")
             self.update_status(f"Failed to establish SSH connection: {str(e)}", True)
             return None
 
@@ -1419,32 +1572,59 @@ class CollectorManager:
         Copy a file to the remote host using SSH/SCP and verify its presence
         """
         try:
+            logger.info(f"Starting file copy operation")
+            logger.debug(f"Local path: {local_path}")
+            logger.debug(f"Remote path: {remote_path}")
             print_info(f"Copying file to {remote_path}...")
             
             # Create SSH client
+            logger.debug("Initializing SSH client")
             ssh = self.create_ssh_client(credentials)
             if not ssh:
+                logger.error("Failed to create SSH client")
                 return False
                 
             try:
                 # Create SFTP client
+                logger.debug("Creating SFTP client")
                 sftp = ssh.open_sftp()
                 
-                # Get file size
+                # Get file size and calculate chunks for progress
                 file_size = os.path.getsize(local_path)
+                logger.debug(f"File size: {file_size / (1024*1024):.2f} MB")
                 print_info(f"File size: {file_size / (1024*1024):.2f} MB")
                 
+                def progress_callback(sent, total):
+                    if sent % (1024*1024) == 0:  # Log every 1MB
+                        progress = (sent/total*100)
+                        logger.debug(f"Transfer progress: {progress:.1f}% ({sent}/{total} bytes)")
+                        print_info(f"Progress: {progress:.1f}%")
+                
                 # Copy the file
-                sftp.put(local_path, remote_path, callback=lambda sent, total: print_info(f"Progress: {sent/total*100:.1f}%") if sent % (1024*1024) == 0 else None)
+                logger.debug("Starting file transfer")
+                sftp.put(local_path, remote_path, callback=progress_callback)
+                logger.info("File transfer completed")
                 
                 # Verify file integrity
-                return self.verify_file_integrity(winrm_session, local_path, remote_path)
+                logger.debug("Starting file integrity verification")
+                verification_result = self.verify_file_integrity(winrm_session, local_path, remote_path)
+                if verification_result:
+                    logger.info("File integrity verification passed")
+                else:
+                    logger.error("File integrity verification failed")
+                return verification_result
                     
+            except Exception as e:
+                logger.error(f"SFTP operation failed: {str(e)}", exc_info=True)
+                print_error(f"File transfer failed: {str(e)}")
+                return False
             finally:
+                logger.debug("Closing SFTP and SSH connections")
                 sftp.close()
                 ssh.close()
                 
         except Exception as e:
+            logger.error(f"File transfer failed: {str(e)}", exc_info=True)
             print_error(f"File transfer failed: {str(e)}")
             return False
 
@@ -1628,6 +1808,99 @@ class CollectorManager:
         except Exception as e:
             print_error(f"Error deleting remote file: {str(e)}")
             logger.error(f"Error deleting remote file: {str(e)}")
+            return False
+
+    def create_combined_artifact_spec(self, artifacts: List[str], spec_name: str = None) -> Optional[str]:
+        """Create a combined spec file for multiple artifacts"""
+        logger.info(f"Creating combined spec for artifacts: {', '.join(artifacts)}")
+        try:
+            self.update_status(f"Creating combined spec for {len(artifacts)} artifacts")
+            
+            spec_generator = SpecFileGenerator(
+                Config.get('ARTIFACT_TEMPLATE_PATH'),
+                Config.get('ARTIFACT_LIST_FILE'),
+                Config.get('ARTIFACT_SPECS_DIR')
+            )
+            
+            logger.debug(f"Template path: {Config.get('ARTIFACT_TEMPLATE_PATH')}")
+            logger.debug(f"Artifact list: {Config.get('ARTIFACT_LIST_FILE')}")
+            logger.debug(f"Specs directory: {Config.get('ARTIFACT_SPECS_DIR')}")
+            
+            # Generate a unique spec name if not provided
+            if not spec_name:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                spec_name = f"profile_artifacts_{timestamp}"
+            
+            spec_path = spec_generator.create_combined_spec_file(artifacts, spec_name)
+            if spec_path:
+                logger.info(f"Successfully created combined spec file at: {spec_path}")
+                self.update_status(f"Created combined spec file with {len(artifacts)} artifacts")
+                return spec_path
+            else:
+                logger.error("Failed to create combined spec")
+                self.update_status("Failed to create combined spec", True)
+                return None
+        except Exception as e:
+            logger.error(f"Error creating combined spec: {str(e)}")
+            self.update_status(f"Error creating combined spec: {str(e)}", True)
+            return None
+
+    def process_artifact_combination(self, artifacts: List[str], build_collectors: bool) -> bool:
+        """Process a combination of artifacts as a single unit"""
+        try:
+            start_time = time.time()
+            logger.info(f"Starting to process artifact combination with {len(artifacts)} artifacts")
+            logger.debug(f"Artifacts to process: {', '.join(artifacts)}")
+            logger.debug(f"Build collectors flag: {build_collectors}")
+            print_info(f"\nStarting to process artifact combination: {', '.join(artifacts)}")
+            
+            # Generate a unique name for this profile
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            profile_name = f"profile_artifacts_{timestamp}"
+            logger.info(f"Generated profile name: {profile_name}")
+            
+            # Step 1: Create combined artifact spec
+            print_info("\nStep 1: Creating combined artifact spec")
+            logger.info("Step 1: Creating combined artifact spec")
+            spec_path = self.create_combined_artifact_spec(artifacts, profile_name)
+            if not spec_path:
+                logger.error("Failed to create combined artifact spec")
+                self.update_artifact_statistics(profile_name, False, time.time() - start_time)
+                return False
+            logger.info(f"Successfully created combined spec at: {spec_path}")
+            
+            if build_collectors:
+                # Step 2: Build collector executable
+                print_info("\nStep 2: Building collector executable")
+                logger.info("Step 2: Building collector executable")
+                collector_path = self.build_collector_exe(profile_name, spec_path)
+                if not collector_path:
+                    logger.error("Failed to build collector executable")
+                    self.update_artifact_statistics(profile_name, False, time.time() - start_time)
+                    return False
+                logger.info(f"Successfully built collector at: {collector_path}")
+                
+                # Step 3: Push and execute collector
+                print_info("\nStep 3: Pushing and executing collector")
+                logger.info("Step 3: Pushing and executing collector")
+                if not self.push_and_execute_collector(collector_path, profile_name):
+                    logger.error("Failed to push and execute collector")
+                    self.update_artifact_statistics(profile_name, False, time.time() - start_time)
+                    return False
+                logger.info("Successfully pushed and executed collector")
+            
+            execution_time = time.time() - start_time
+            self.update_artifact_statistics(profile_name, True, execution_time)
+            success_msg = f"Successfully processed {profile_name} in {execution_time:.2f} seconds"
+            print_success(f"\n{success_msg}")
+            logger.info(success_msg)
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error processing combined artifacts: {str(e)}"
+            print_error(error_msg)
+            logger.error(error_msg, exc_info=True)  # Include full exception traceback
+            self.update_artifact_statistics("CombinedArtifacts", False, time.time() - start_time)
             return False
 
 def main():

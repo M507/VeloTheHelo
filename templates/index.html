@@ -231,6 +231,35 @@
             color: white !important;
             cursor: not-allowed;
         }
+        /* Add new styles for download button */
+        .btn-download-collector {
+            background-color: #6c757d;
+            border-color: #6c757d;
+            color: white;
+            cursor: not-allowed;
+        }
+        .btn-download-collector.enabled {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            cursor: pointer;
+        }
+        /* Add styles for download status messages */
+        .download-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .download-status.info {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+            border: 1px solid #90caf9;
+        }
+        .download-status.error {
+            background-color: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
     </style>
 </head>
 <body>
@@ -424,7 +453,12 @@
                             <button type="button" class="btn btn-warning" id="cleanup-profile-btn" disabled>
                                 <i class="fas fa-broom"></i> Cleanup
                             </button>
+                            <button type="button" class="btn btn-download-collector" id="download-collector-btn" disabled>
+                                <i class="fas fa-download"></i> Download Collector
+                            </button>
                         </div>
+                        <!-- Add download status message div -->
+                        <div id="download-status" class="download-status"></div>
                     </div>
                 </div>
 
@@ -538,6 +572,7 @@
     <!-- Add highlight.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
     <script>
         let isProcessing = false;
@@ -1257,11 +1292,116 @@
             });
         });
 
-        // Function to update profile status
+        // Function to show download status message
+        function showDownloadStatus(message, type = 'info') {
+            const statusDiv = $('#download-status');
+            statusDiv
+                .removeClass('info error')
+                .addClass(type)
+                .html(`<i class="fas ${type === 'info' ? 'fa-info-circle' : 'fa-exclamation-circle'}"></i> ${message}`)
+                .show();
+            
+            // Log to console as well
+            console.log(`Download Status (${type}):`, message);
+        }
+
+        // Function to update download button state
+        function updateDownloadButton(data) {
+            const downloadBtn = $('#download-collector-btn');
+            console.log('Updating download button state with data:', data);
+            
+            if (data.completed && data.artifact_stats && 
+                data.artifact_stats.successful && 
+                data.artifact_stats.successful.length > 0) {
+                console.log('Enabling download button - collector available');
+                downloadBtn
+                    .prop('disabled', false)
+                    .addClass('enabled')
+                    .attr('title', 'Click to download the collector');
+                showDownloadStatus('Collector is ready for download', 'info');
+            } else {
+                console.log('Disabling download button - collector not available');
+                downloadBtn
+                    .prop('disabled', true)
+                    .removeClass('enabled')
+                    .attr('title', 'Collector not available');
+                showDownloadStatus('Collector is not available yet', 'info');
+            }
+        }
+
+        $(document).ready(function() {
+            console.log('Initializing download button handlers');
+            
+            // Remove any existing click handlers and add new one
+            $('#download-collector-btn').off('click').on('click', function(e) {
+                e.preventDefault();
+                console.log('Download button clicked');
+                console.log('Button state:', {
+                    disabled: $(this).prop('disabled'),
+                    hasEnabledClass: $(this).hasClass('enabled')
+                });
+
+                if ($(this).hasClass('enabled')) {
+                    console.log('Button is enabled, initiating download...');
+                    showDownloadStatus('Starting collector download...', 'info');
+
+                    // Make an AJAX call first to check if the collector exists
+                    $.ajax({
+                        url: '/download-collector',
+                        method: 'GET',
+                        success: function(response) {
+                            console.log('Download check successful:', response);
+                            // If we got a successful response, trigger the actual download
+                            window.location.href = '/download-collector';
+                            showDownloadStatus('Download started successfully', 'info');
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Download check failed:', {xhr, status, error});
+                            let errorMessage = 'Failed to download collector: ';
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                errorMessage += response.error || error;
+                            } catch (e) {
+                                errorMessage += error;
+                            }
+                            showDownloadStatus(errorMessage, 'error');
+                        }
+                    });
+                } else {
+                    console.log('Button is disabled, ignoring click');
+                    showDownloadStatus('Collector is not ready for download yet', 'error');
+                }
+            });
+
+            // Update the start profile testing click handler
+            $('#start-profile-testing').off('click').on('click', function() {
+                console.log('Starting profile testing, resetting download button');
+                $('#download-collector-btn')
+                    .prop('disabled', true)
+                    .removeClass('enabled')
+                    .attr('title', 'Processing in progress...');
+                showDownloadStatus('Processing in progress...', 'info');
+                // ... rest of your existing start profile testing code ...
+            });
+
+            // Update the cleanup button click handler
+            $('#cleanup-profile-btn').off('click').on('click', function() {
+                console.log('Starting cleanup, resetting download button');
+                $('#download-collector-btn')
+                    .prop('disabled', true)
+                    .removeClass('enabled')
+                    .attr('title', 'Cleanup in progress...');
+                showDownloadStatus('Cleanup in progress...', 'info');
+                // ... rest of your existing cleanup code ...
+            });
+        });
+
+        // Update the existing updateProfileStatus function
         async function updateProfileStatus() {
             try {
                 const response = await fetch('/profile-status');
                 const data = await response.json();
+                console.log('Profile status update received:', data);
 
                 // Show all sections
                 document.getElementById('profile-progress').style.display = 'block';
@@ -1294,6 +1434,9 @@
 
                 // Auto-scroll to the bottom of the messages container
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // Update download button state
+                updateDownloadButton(data);
 
                 // If processing is complete, show results
                 if (data.completed && data.artifact_results && data.artifact_results.length > 0) {
@@ -1348,12 +1491,13 @@
                             </div>
                         </div>
                     `;
-
+                    console.log('Processing completed, final button state update');
                     return false; // Stop polling
                 }
                 return true; // Continue polling
             } catch (error) {
                 console.error('Error fetching profile status:', error);
+                showDownloadStatus('Error checking profile status: ' + error, 'error');
                 return true; // Continue polling despite error
             }
         }

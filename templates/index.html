@@ -293,7 +293,7 @@
                                        placeholder="e.g., Windows.System.PowerShell,Windows.Sys.Users">
                             </div>
                             <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors" value="true">
+                                <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors" value="true" checked disabled>
                                 <label class="form-check-label" for="build-collectors">Build Collectors</label>
                             </div>
                             <div class="btn-group">
@@ -410,7 +410,7 @@
                         <div class="mb-3">
                             <label class="form-label">Testing Settings</label>
                             <div class="form-check mb-2">
-                                <input type="checkbox" class="form-check-input" id="build-collectors-profile">
+                                <input type="checkbox" class="form-check-input" id="build-collectors-profile" checked disabled>
                                 <label class="form-check-label" for="build-collectors-profile">
                                     Build Collectors
                                 </label>
@@ -663,9 +663,8 @@
             e.preventDefault();
             const formData = new FormData(this);
             
-            // Explicitly handle the checkbox
-            const buildCollectors = document.getElementById('build-collectors');
-            formData.set('build_collectors', buildCollectors.checked ? 'true' : 'false');
+            // Explicitly handle the checkbox - always set to true regardless of checkbox state
+            formData.set('build_collectors', 'true');
             
             // Disable the submit button and show processing state
             const submitBtn = document.getElementById('submit-btn');
@@ -1217,7 +1216,7 @@
             const data = {
                 profiles: [selectedProfile.value], // Backend expects an array of profile IDs
                 host: host,
-                buildCollectors: document.getElementById('build-collectors-profile').checked
+                buildCollectors: true  // Always set to true
             };
 
             // Disable the button and show loading state

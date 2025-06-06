@@ -1,6 +1,106 @@
 # Velociraptor Collector Manager
 
-A tool for managing and processing Velociraptor collectors and their outputs.
+## Project Overview
+
+The Velociraptor Collector Manager was developed to solve critical challenges in Velociraptor artifact development and deployment workflows. It serves as a comprehensive testing and automation platform for Velociraptor artifacts, addressing several key needs in incident response and digital forensics teams:
+
+### Key Problems Solved
+
+1. **Artifact Testing and Validation**:
+   - Test artifacts during development across different OS versions and environments
+   - Catch potential issues before deployment in incident response engagements
+   - Validate artifact behavior and output across different system configurations
+   - Prevent deployment of broken or malfunctioning artifacts to clients
+
+2. **Team Collaboration and Standardization**:
+   - Pull artifacts directly from a central Velociraptor server used by the entire team
+   - Maintain consistency in artifact versions across the team
+   - Eliminate collaboration issues and version mismatches
+   - Share and test artifacts in a standardized environment
+
+3. **Golden Profile Management**:
+   - Create and maintain tested, reliable artifact combinations (profiles)
+   - Ensure consistent collector behavior across different deployments
+   - Test profiles thoroughly before client deployment
+   - Document and track successful artifact combinations
+
+4. **Automation and Efficiency**:
+   - Automate the entire artifact testing workflow
+   - Streamline collector building and deployment
+   - Provide a user-friendly web interface for artifact management
+   - Reduce manual effort in testing and validation
+
+### Core Features
+
+The tool automates several critical tasks:
+1. Creating and managing artifact specifications
+2. Building and deploying collectors to target systems
+3. Executing collections remotely
+4. Processing and standardizing collected data
+5. Enriching data with system information and timestamps
+6. Validating and formatting results for further analysis
+
+### Use Cases
+
+1. **Development Testing**:
+   ```
+   - Test new artifacts during development
+   - Validate modifications to existing artifacts
+   - Debug artifact issues in controlled environments
+   ```
+
+2. **Pre-Deployment Validation**:
+   ```
+   - Test collectors before client deployment
+   - Validate artifact behavior on specific OS versions
+   - Ensure reliable data collection
+   ```
+
+3. **Profile Creation**:
+   ```
+   - Build and test artifact combinations
+   - Create standardized collection profiles
+   - Document successful configurations
+   ```
+
+4. **Team Collaboration**:
+   ```
+   - Share tested artifacts across the team
+   - Maintain consistent artifact versions
+   - Centralize artifact management
+   ```
+
+This automation significantly reduces the risk of deploying untested artifacts in critical incident response.
+
+## Directory Structure
+
+The project uses several directories for different purposes:
+
+- `runtime/`: Temporary storage for incoming collection data and ZIP files
+  - Used as the default input directory for raw collection files
+  - Cleaned automatically before each new operation
+
+- `runtime_zip/`: Processed and formatted collection results
+  - Contains extracted and processed data in a standardized format
+  - Maintains the original collection structure with added enrichments
+
+- `collectors/`: Storage for built Velociraptor collectors
+  - Houses generated collector executables
+  - Named according to their artifact specifications
+
+- `specs/`: Artifact specification files
+  - Contains YAML specifications for artifacts
+  - Used to generate collectors
+
+- `binaries/`: Velociraptor binary files
+  - Contains the Velociraptor executable
+  - Used for building collectors
+
+- `config/`: Configuration files
+  - Server configuration
+  - Environment settings
+  - Artifact templates
+
 
 ## Usage
 
@@ -84,15 +184,6 @@ python collector_manager.py --mode batch --artifacts "Windows.System.HostsFile,W
 python collector_manager.py --mode batch --artifacts "Windows.System.HostsFile" --build
 ```
 
-## Output Structure
-
-When processing ZIP files, the tool will:
-1. Extract all ZIP files from the input directory
-2. Process and validate the contents
-3. Add system information and timestamps
-4. Save the processed results to the output directory
-5. Clean up temporary files and indices
-
 ## Requirements
 
 ### General Requirements
@@ -111,13 +202,22 @@ When processing ZIP files, the tool will:
 ### Web Interface Configuration
 The web interface can be configured through environment variables:
 ```bash
-PORT=8080              # Change the web server port (default: 5000)
-HOST=0.0.0.0          # Change the host binding (default: localhost)
-DEBUG=True            # Enable debug mode (default: False)
-UPLOAD_FOLDER=uploads # Change upload directory (default: runtime)
+WINRM_HOST_WIN10=192.168.1.1
+WINRM_HOST_WIN11=192.168.1.1
+WINRM_HOST_WINServer12=192.168.1.1
+WINRM_HOST_WINServer16=192.168.1.1
+WINRM_HOST_WINServer19=192.168.1.1
+WINRM_HOST_WINServer22=192.168.1.1
+WINRM_HOST_WINServer25=192.168.1.1
+WINRM_USERNAME=administrator
+WINRM_PASSWORD=PASSWORDHERE
+SSH_PORT=22
+COLLECTOR_FILE=./datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe
+VELO_DATASTORE=./datastore/
+VELO_SERVER_CONFIG=./datastore/server.config.yaml
+VELO_BINARY_PATH=./binaries/velociraptor-v0.72.4-windows-amd64.exe
+ARTIFACT_TEMPLATE_PATH=./specs/test.yaml
 ```
-
-You can also create a `.env` file in the project root with these settings.
 
 ### Command Line Configuration
 The command line interface uses the following default directories:
@@ -126,59 +226,20 @@ The command line interface uses the following default directories:
 - `collectors/`: Directory for built collectors
 - `specs/`: Directory for artifact specifications
 
-## Processing Features
 
-The tool provides the following processing features:
-1. ZIP File Processing:
-   - Extraction and validation
-   - System information enrichment
-   - Timestamp standardization
-   - Index file cleanup
-
-2. Artifact Collection:
-   - Multiple artifact support
-   - Collector building
-   - Remote execution
-   - Result gathering
-
-3. Data Enhancement:
-   - Automatic timestamp conversion
-   - System information integration
-   - Source type identification
-   - JSON validation and formatting
 
 ## Output Format
 
-Processed files maintain the following structure:
-```
-output_directory/
-├── Collection--hostname--timestamp/
-│   ├── results/
-│   │   ├── artifact1.json
-│   │   ├── artifact2.json
-│   │   └── ...
-│   └── logs/
-└── ...
-```
+#### When processing ZIP files, the tool will:
+- Extract all ZIP files from the input directory
+- Process and validate the contents
+- Add system information and timestamps
+- Save the processed results to the output directory
+- Clean up temporary files and indices
 
-Each JSON file contains:
+#### Each JSON file contains:
 - Original artifact data
 - Added system information
 - Standardized timestamps
 - Source type identification
 - Additional metadata
-
-## Running Modes
-
-### 1. Web Interface Mode
-The web interface provides a user-friendly way to:
-- Upload and process ZIP files
-- Monitor processing progress in real-time
-- View and download processed results
-- Configure processing options visually
-- Handle multiple files simultaneously
-
-### 2. Command Line Mode
-```bash
-python collector_manager.py --mode [mode] [options]
-```

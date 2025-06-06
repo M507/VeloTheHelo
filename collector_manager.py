@@ -28,58 +28,125 @@ warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
 warnings.filterwarnings('ignore', message='.*TripleDES.*')
 
 class SpecFileGenerator:
-    def __init__(self, template_path: str, artifacts_path: str, output_dir: str):
-        print_info(f"\nInitializing SpecFileGenerator")
-        print_info(f"Template path: {template_path}")
-        print_info(f"Artifacts path: {artifacts_path}")
-        print_info(f"Output directory: {output_dir}")
+    """A highly customizable generator for Velociraptor artifact specification files."""
+    
+    DEFAULT_ENCODINGS = ['utf-16', 'utf-8', 'latin1', 'ascii']
+    DEFAULT_START_MARKER = "The list of artifacts and their args."
+    DEFAULT_END_MARKER = "Can be ZIP"
+    DEFAULT_SPEC_PREFIX = "single_artifact_spec"
+    DEFAULT_COMBINED_SPEC_NAME = "combined_artifacts"
+    DEFAULT_FILE_EXTENSION = ".yaml"
+    
+    def __init__(self, 
+                 template_path: str = None, 
+                 artifacts_path: str = None, 
+                 output_dir: str = None,
+                 encodings: List[str] = None,
+                 start_marker: str = None,
+                 end_marker: str = None,
+                 spec_prefix: str = None,
+                 file_extension: str = None,
+                 create_dirs: bool = True,
+                 default_artifact_config: Dict[str, Any] = None):
+        """
+        Initialize the SpecFileGenerator with customizable parameters.
         
-        self.template_path = template_path
-        self.artifacts_path = artifacts_path
-        self.output_dir = output_dir
+        Args:
+            template_path: Path to the template file. If None, uses Config.get('ARTIFACT_TEMPLATE_PATH')
+            artifacts_path: Path to artifacts list file. If None, uses Config.get('ARTIFACT_LIST_FILE')
+            output_dir: Directory for output files. If None, uses Config.get('ARTIFACT_SPECS_DIR')
+            encodings: List of encodings to try when reading files. If None, uses DEFAULT_ENCODINGS
+            start_marker: Custom start marker for template sections. If None, uses DEFAULT_START_MARKER
+            end_marker: Custom end marker for template sections. If None, uses DEFAULT_END_MARKER
+            spec_prefix: Prefix for generated spec files. If None, uses DEFAULT_SPEC_PREFIX
+            file_extension: Extension for generated files. If None, uses DEFAULT_FILE_EXTENSION
+            create_dirs: Whether to create output directory if it doesn't exist
+            default_artifact_config: Default configuration for artifacts. If None, uses {"All": "Y"}
+        """
+        print_info(f"\nInitializing SpecFileGenerator with custom configuration")
+        
+        # Set paths with defaults from Config
+        self.template_path = template_path or Config.get('ARTIFACT_TEMPLATE_PATH')
+        self.artifacts_path = artifacts_path or Config.get('ARTIFACT_LIST_FILE')
+        self.output_dir = output_dir or Config.get('ARTIFACT_SPECS_DIR')
+        
+        # Set customizable parameters
+        self.encodings = encodings or self.DEFAULT_ENCODINGS
+        self.start_marker = start_marker or self.DEFAULT_START_MARKER
+        self.end_marker = end_marker or self.DEFAULT_END_MARKER
+        self.spec_prefix = spec_prefix or self.DEFAULT_SPEC_PREFIX
+        self.file_extension = file_extension or self.DEFAULT_FILE_EXTENSION
+        self.create_dirs = create_dirs
+        self.default_artifact_config = default_artifact_config or {"All": "Y"}
+        
+        # Initialize state
         self.template_encoding = None
+        
+        # Log configuration
+        print_info(f"Template path: {self.template_path}")
+        print_info(f"Artifacts path: {self.artifacts_path}")
+        print_info(f"Output directory: {self.output_dir}")
+        print_info(f"Using encodings: {', '.join(self.encodings)}")
+        
+        # Create output directory if needed
+        if self.create_dirs and not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            print_success(f"Created output directory: {self.output_dir}")
 
-    def try_read_file(self, file_path: str) -> Tuple[Optional[List[str]], Optional[str]]:
-        """Try to read a file with different encodings."""
+    def try_read_file(self, file_path: str, specific_encoding: str = None) -> Tuple[Optional[List[str]], Optional[str]]:
+        """
+        Try to read a file with different encodings or a specific encoding.
+        
+        Args:
+            file_path: Path to the file to read
+            specific_encoding: If provided, only tries this encoding
+            
+        Returns:
+            Tuple of (lines, encoding) or (None, None) if read fails
+        """
         print_info(f"\nAttempting to read {file_path}")
         
-        # First try UTF-16
-        try:
-            with open(file_path, 'r', encoding='utf-16') as f:
-                lines = f.readlines()
-                print_success(f"Successfully read {len(lines)} lines with UTF-16")
-                return lines, 'utf-16'
-        except UnicodeError:
-            print_info("UTF-16 encoding failed, trying others...")
-            pass
-
-        # Then try other encodings
-        for encoding in ['utf-8', 'latin1', 'ascii']:
+        encodings_to_try = [specific_encoding] if specific_encoding else self.encodings
+        
+        for encoding in encodings_to_try:
             try:
                 with open(file_path, 'r', encoding=encoding) as f:
                     lines = f.readlines()
                     print_success(f"Successfully read {len(lines)} lines with {encoding}")
                     return lines, encoding
-            except UnicodeDecodeError:
+            except UnicodeError:
                 print_info(f"{encoding} encoding failed, trying next...")
                 continue
             except Exception as e:
-                print_error(f"Error reading file {file_path}: {e}")
+                print_error(f"Error reading file {file_path} with {encoding}: {e}")
         
         print_error(f"Failed to read {file_path} with any encoding")
         return None, None
 
-    def find_section_markers(self, lines: List[str]) -> Tuple[int, int]:
-        """Find the start and end markers in the template."""
+    def find_section_markers(self, lines: List[str], custom_start: str = None, custom_end: str = None) -> Tuple[int, int]:
+        """
+        Find the start and end markers in the template.
+        
+        Args:
+            lines: List of lines to search in
+            custom_start: Custom start marker to override class setting
+            custom_end: Custom end marker to override class setting
+            
+        Returns:
+            Tuple of (start_line, end_line) indices
+        """
         print_info("\nFinding section markers in template")
         start = -1
         end = -1
         
+        start_marker = custom_start or self.start_marker
+        end_marker = custom_end or self.end_marker
+        
         for i, line in enumerate(lines):
-            if "The list of artifacts and their args." in line:
+            if start_marker in line:
                 start = i
                 print_info(f"Found start marker at line {i}")
-            elif "Can be ZIP" in line:
+            elif end_marker in line:
                 end = i
                 print_info(f"Found end marker at line {i}")
                 break
@@ -91,52 +158,81 @@ class SpecFileGenerator:
         
         return start, end
 
-    def create_spec_file(self, artifact: str) -> Optional[str]:
-        """Create a spec file for a single artifact."""
+    def create_spec_file(self, 
+                        artifact: str, 
+                        custom_config: Dict[str, Any] = None,
+                        filename_prefix: str = None,
+                        output_dir: str = None,
+                        include_generic_info: bool = True,
+                        encoding: str = None) -> Optional[str]:
+        """
+        Create a spec file for a single artifact with customizable options.
+        
+        Args:
+            artifact: Name of the artifact
+            custom_config: Custom configuration for this artifact. If None, uses default_artifact_config
+            filename_prefix: Custom prefix for the output filename
+            output_dir: Custom output directory for this spec file
+            include_generic_info: Whether to include Generic.Client.Info
+            encoding: Specific encoding to use for writing the file
+            
+        Returns:
+            Path to the created spec file or None if creation fails
+        """
         print_info(f"\nCreating spec file for artifact: {artifact}")
         try:
-            # Create output directory if it doesn't exist
-            if not os.path.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-                print_success(f"Created output directory: {self.output_dir}")
+            # Use custom output directory if provided
+            output_dir = output_dir or self.output_dir
+            if self.create_dirs and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                print_success(f"Created output directory: {output_dir}")
 
             # Read template file
             print_info(f"Reading template file: {self.template_path}")
-            template_lines, self.template_encoding = self.try_read_file(self.template_path)
+            template_lines, self.template_encoding = self.try_read_file(self.template_path, encoding)
             if not template_lines:
                 print_error("Failed to read template file")
                 return None
 
             # Find section markers
-            print_info("Looking for section markers")
             start, end = self.find_section_markers(template_lines)
             if start == -1 or end == -1:
                 print_error("Could not find section markers in template")
                 return None
 
             # Split template into header and footer
-            print_info("Splitting template into sections")
-            header_lines = template_lines[:start + 2]  # Include the marker and "Artifacts:" line
+            header_lines = template_lines[:start + 2]
             footer_lines = template_lines[end:]
 
             # Create the new content
-            print_info("Creating new content")
             new_content = header_lines.copy()
+            
+            # Add artifact with custom or default configuration
+            config = custom_config or self.default_artifact_config
             new_content.append(f" {artifact}:\n")
-            new_content.append("    All: Y\n")
-            new_content.append(" Generic.Client.Info:\n")
-            new_content.append("    All: Y\n")
+            for key, value in config.items():
+                new_content.append(f"    {key}: {value}\n")
+            
+            # Add Generic.Client.Info if requested
+            if include_generic_info:
+                new_content.append(" Generic.Client.Info:\n")
+                for key, value in self.default_artifact_config.items():
+                    new_content.append(f"    {key}: {value}\n")
+            
             new_content.extend(footer_lines)
             
-            # Create a more descriptive filename
-            clean_artifact_name = artifact.replace('.', '_')
-            spec_filename = f"single_artifact_spec_{clean_artifact_name}.yaml"
-            spec_path = os.path.join(self.output_dir, spec_filename)
+            # Create filename
+            prefix = filename_prefix or self.spec_prefix
+            clean_artifact_name = artifact.replace('.', '_').replace(' ', '_')
+            spec_filename = f"{prefix}_{clean_artifact_name}{self.file_extension}"
+            spec_path = os.path.join(output_dir, spec_filename)
             
             print_info(f"Writing spec file: {spec_path}")
             print_info(f"Content length: {len(new_content)} lines")
             
-            with open(spec_path, 'w', newline='', encoding=self.template_encoding or 'utf-8') as spec_file:
+            # Write the file with specified or detected encoding
+            file_encoding = encoding or self.template_encoding or 'utf-8'
+            with open(spec_path, 'w', newline='', encoding=file_encoding) as spec_file:
                 spec_file.writelines(new_content)
             
             print_success(f"Successfully created spec file for {artifact}")
@@ -146,56 +242,84 @@ class SpecFileGenerator:
             print_error(f"Error creating spec file for {artifact}: {e}")
             return None
 
-    def create_combined_spec_file(self, artifacts: List[str], spec_name: str = "combined_artifacts") -> Optional[str]:
-        """Create a spec file that includes multiple artifacts."""
+    def create_combined_spec_file(self, 
+                                artifacts: List[str],
+                                spec_name: str = None,
+                                custom_configs: Dict[str, Dict[str, Any]] = None,
+                                output_dir: str = None,
+                                include_generic_info: bool = True,
+                                encoding: str = None,
+                                custom_markers: Tuple[str, str] = None) -> Optional[str]:
+        """
+        Create a spec file that includes multiple artifacts with extensive customization.
+        
+        Args:
+            artifacts: List of artifact names to include
+            spec_name: Custom name for the spec file
+            custom_configs: Dict mapping artifact names to their custom configurations
+            output_dir: Custom output directory for this spec file
+            include_generic_info: Whether to include Generic.Client.Info
+            encoding: Specific encoding to use for writing the file
+            custom_markers: Tuple of (start_marker, end_marker) to use for this file
+            
+        Returns:
+            Path to the created spec file or None if creation fails
+        """
         print_info(f"\nCreating combined spec file for artifacts: {', '.join(artifacts)}")
         try:
-            # Create output directory if it doesn't exist
-            if not os.path.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-                print_success(f"Created output directory: {self.output_dir}")
+            # Use custom output directory if provided
+            output_dir = output_dir or self.output_dir
+            if self.create_dirs and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                print_success(f"Created output directory: {output_dir}")
 
             # Read template file
             print_info(f"Reading template file: {self.template_path}")
-            template_lines, self.template_encoding = self.try_read_file(self.template_path)
+            template_lines, self.template_encoding = self.try_read_file(self.template_path, encoding)
             if not template_lines:
                 print_error("Failed to read template file")
                 return None
 
-            # Find section markers
-            print_info("Looking for section markers")
-            start, end = self.find_section_markers(template_lines)
+            # Find section markers using custom markers if provided
+            start_marker, end_marker = custom_markers or (None, None)
+            start, end = self.find_section_markers(template_lines, start_marker, end_marker)
             if start == -1 or end == -1:
                 print_error("Could not find section markers in template")
                 return None
 
             # Split template into header and footer
-            print_info("Splitting template into sections")
-            header_lines = template_lines[:start + 2]  # Include the marker and "Artifacts:" line
+            header_lines = template_lines[:start + 2]
             footer_lines = template_lines[end:]
 
             # Create the new content
-            print_info("Creating new content with multiple artifacts")
             new_content = header_lines.copy()
             
-            # Add each artifact to the spec
+            # Add each artifact with its configuration
             for artifact in artifacts:
+                config = (custom_configs or {}).get(artifact, self.default_artifact_config)
                 new_content.append(f" {artifact}:\n")
-                new_content.append("    All: Y\n")
+                for key, value in config.items():
+                    new_content.append(f"    {key}: {value}\n")
             
-            # Add Generic.Client.Info
-            new_content.append(" Generic.Client.Info:\n")
-            new_content.append("    All: Y\n")
+            # Add Generic.Client.Info if requested
+            if include_generic_info:
+                new_content.append(" Generic.Client.Info:\n")
+                for key, value in self.default_artifact_config.items():
+                    new_content.append(f"    {key}: {value}\n")
+            
             new_content.extend(footer_lines)
             
-            # Create a descriptive filename
-            spec_filename = f"{spec_name}.yaml"
-            spec_path = os.path.join(self.output_dir, spec_filename)
+            # Create filename
+            spec_name = spec_name or self.DEFAULT_COMBINED_SPEC_NAME
+            spec_filename = f"{spec_name}{self.file_extension}"
+            spec_path = os.path.join(output_dir, spec_filename)
             
             print_info(f"Writing combined spec file: {spec_path}")
             print_info(f"Content length: {len(new_content)} lines")
             
-            with open(spec_path, 'w', newline='', encoding=self.template_encoding or 'utf-8') as spec_file:
+            # Write the file with specified or detected encoding
+            file_encoding = encoding or self.template_encoding or 'utf-8'
+            with open(spec_path, 'w', newline='', encoding=file_encoding) as spec_file:
                 spec_file.writelines(new_content)
             
             print_success(f"Successfully created combined spec file with {len(artifacts)} artifacts")
@@ -231,17 +355,18 @@ class CollectorManager:
         logger.debug("CollectorManager initialized with empty status")
 
     @staticmethod
-    def clean_all_directories() -> bool:
-        """Clean all working directories"""
+    def clean_all_directories(directories: Optional[List[str]] = None) -> bool:
+        """Clean specified directories or all working directories if none specified"""
         print_info("\nStarting directory cleanup...")
         logger.info("Starting directory cleanup")
         try:
-            directories = [
-                Config.get('ARTIFACT_SPECS_DIR'),
-                'collectors',
-                'runtime_zip',
-                'runtime'
-            ]
+            if directories is None:
+                directories = [
+                    Config.get('ARTIFACT_SPECS_DIR'),
+                    'collectors',
+                    'runtime_zip',
+                    'runtime'
+                ]
             
             for directory in directories:
                 try:
@@ -586,6 +711,12 @@ class CollectorManager:
             if not self.pull_files_by_pattern(collection_pattern):
                 print_error("Failed to pull collection zip files")
                 return False
+
+            # Pull all collector log files
+            print_info("\nPulling Collector log files...")
+            log_pattern = "C:\\Windows\\Temp\\Collector_*.log"
+            if not self.pull_files_by_pattern(log_pattern):
+                print_warning("Failed to pull log files, but continuing...")
             
             return True
             
@@ -1337,42 +1468,63 @@ class CollectorManager:
             return result.std_out.decode('utf-8').strip()
         return None
 
+    def process_files(self, input_dir: str = 'runtime', output_dir: str = 'runtime_zip', mode: str = 'collection') -> bool:
+        """Process files in input directory and save results to output directory"""
+        try:
+            print_info(f"\nProcessing files from: {input_dir}")
+            print_info(f"Saving results to: {output_dir}")
+            
+            input_dir = Path(input_dir)
+            output_dir = Path(output_dir)
+            
+            # Create output directory if it doesn't exist
+            output_dir.mkdir(exist_ok=True)
+            
+            if not input_dir.exists():
+                print_error(f"Error: Source directory '{input_dir}' does not exist!")
+                return False
+            
+            # Find zip files
+            zip_files = list(input_dir.glob('*.zip'))
+            if not zip_files:
+                print_warning("No zip files found!")
+                return False
+            
+            # Step 1: First unzip all files
+            print_info("\nStep 1: Unzipping files")
+            for zip_path in zip_files:
+                if not self.unzip_collection_file(zip_path, output_dir):
+                    print_error(f"Failed to unzip {zip_path.name}")
+                    return False
+            
+            # Step 2: Process extracted files
+            print_info("\nStep 2: Processing extracted files")
+            if mode == 'collection':
+                success = self.process_extracted_files(output_dir)
+            else:  # mode == 'zip'
+                success = True
+                for zip_path in zip_files:
+                    try:
+                        process_single_zip(zip_path, output_dir)
+                        if not check_process_single_zip(zip_path, output_dir):
+                            success = False
+                    except Exception as e:
+                        print_error(f"Error processing {zip_path.name}: {str(e)}")
+                        success = False
+            
+            return success
+            
+        except Exception as e:
+            print_error(f"Error processing files: {str(e)}")
+            return False
+
     def process_zip_files(self, input_dir: str = 'runtime', output_dir: str = 'runtime_zip') -> bool:
-        """Process all zip files in input directory and save results to output directory
-        Args:
-            input_dir: Directory containing zip files to process. Defaults to 'runtime'
-            output_dir: Directory to save processed files. Defaults to 'runtime_zip'
-        Returns:
-            bool: True if processing was successful, False otherwise
-        """
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-        
-        print_info(f"\nProcessing zip files from: {input_dir}")
-        print_info(f"Saving results to: {output_dir}")
-        
-        output_dir.mkdir(exist_ok=True)
-        
-        if not input_dir.exists():
-            print_error(f"Error: Source directory '{input_dir}' does not exist!")
-            return False
-        
-        zip_files = list(input_dir.glob('*.zip'))
-        if not zip_files:
-            print_error(f"No zip files found in {input_dir}!")
-            return False
-        
-        success = True
-        for zip_path in zip_files:
-            try:
-                process_single_zip(zip_path, output_dir)
-                if not check_process_single_zip(zip_path, output_dir):
-                    success = False
-            except Exception as e:
-                print_error(f"Error processing {zip_path.name}: {str(e)}")
-                success = False
-        
-        return success
+        """Process all zip files in input directory and save results to output directory"""
+        return self.process_files(input_dir, output_dir, mode='zip')
+
+    def process_collection_data(self) -> bool:
+        """Process all collection data"""
+        return self.process_files(mode='collection')
 
     def run_windows_test(self) -> bool:
         """Run Windows testing functionality"""
@@ -1465,30 +1617,7 @@ class CollectorManager:
 
     def clean_runtime_directory(self) -> bool:
         """Clean the runtime directory by removing all files"""
-        runtime_dir = "./runtime"
-        try:
-            if not os.path.exists(runtime_dir):
-                os.makedirs(runtime_dir)
-                self.update_status("Created clean runtime directory")
-                return True
-                
-            for filename in os.listdir(runtime_dir):
-                file_path = os.path.join(runtime_dir, filename)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                    elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                except Exception as e:
-                    self.update_status(f"Failed to remove {file_path}: {str(e)}", True)
-                    return False
-                    
-            self.update_status("Cleaned runtime directory")
-            return True
-            
-        except Exception as e:
-            self.update_status(f"Failed to clean runtime directory: {str(e)}", True)
-            return False
+        return self.clean_all_directories(['runtime'])
 
     def pull_files_by_pattern(self, remote_pattern: str, local_dir: str = "./runtime") -> bool:
         """Pull files matching a pattern from remote system"""
@@ -1686,41 +1815,6 @@ class CollectorManager:
                 
         except Exception as e:
             print_error(f"Failed to pull file: {str(e)}")
-            return False
-
-    def process_collection_data(self) -> bool:
-        """Process all collection data"""
-        try:
-            print_info("\nProcessing collection data")
-            
-            # Look for zip files in runtime directory
-            runtime_dir = "./runtime"
-            zip_files = [f for f in os.listdir(runtime_dir) if f.endswith('.zip')]
-            
-            if not zip_files:
-                print_warning("No collection zip files found")
-                return False
-            
-            # Create runtime_zip directory if it doesn't exist
-            runtime_zip_dir = Path('runtime_zip')
-            runtime_zip_dir.mkdir(exist_ok=True)
-            
-            # Step 1: First unzip all files
-            print_info("\nStep 1: Unzipping all collection files")
-            for zip_file in zip_files:
-                zip_path = Path(os.path.join(runtime_dir, zip_file))
-                if not self.unzip_collection_file(zip_path, runtime_zip_dir):
-                    print_error(f"Failed to unzip {zip_file}")
-                    return False
-            
-            # Step 2: Process all extracted files
-            print_info("\nStep 2: Processing all extracted files")
-            success = self.process_extracted_files(runtime_zip_dir)
-            
-            return success
-            
-        except Exception as e:
-            print_error(f"Error processing collection data: {str(e)}")
             return False
 
     def unzip_collection_file(self, zip_path: Path, runtime_zip_dir: Path) -> bool:

@@ -1,0 +1,9 @@
+{
+    "name": "Test",
+    "description": "Artifacts for collecting user information",
+    "artifacts": [
+        "Windows.Sys.AllUsers",
+        "Windows.Sys.Users",
+        "Custom.Cipher.Windows.WELS.WinRM"
+    ]
+} 

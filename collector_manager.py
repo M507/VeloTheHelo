@@ -231,17 +231,18 @@ class CollectorManager:
         logger.debug("CollectorManager initialized with empty status")
 
     @staticmethod
-    def clean_all_directories() -> bool:
-        """Clean all working directories"""
+    def clean_all_directories(directories: Optional[List[str]] = None) -> bool:
+        """Clean specified directories or all working directories if none specified"""
         print_info("\nStarting directory cleanup...")
         logger.info("Starting directory cleanup")
         try:
-            directories = [
-                Config.get('ARTIFACT_SPECS_DIR'),
-                'collectors',
-                'runtime_zip',
-                'runtime'
-            ]
+            if directories is None:
+                directories = [
+                    Config.get('ARTIFACT_SPECS_DIR'),
+                    'collectors',
+                    'runtime_zip',
+                    'runtime'
+                ]
             
             for directory in directories:
                 try:
@@ -1337,42 +1338,63 @@ class CollectorManager:
             return result.std_out.decode('utf-8').strip()
         return None
 
+    def process_files(self, input_dir: str = 'runtime', output_dir: str = 'runtime_zip', mode: str = 'collection') -> bool:
+        """Process files in input directory and save results to output directory"""
+        try:
+            print_info(f"\nProcessing files from: {input_dir}")
+            print_info(f"Saving results to: {output_dir}")
+            
+            input_dir = Path(input_dir)
+            output_dir = Path(output_dir)
+            
+            # Create output directory if it doesn't exist
+            output_dir.mkdir(exist_ok=True)
+            
+            if not input_dir.exists():
+                print_error(f"Error: Source directory '{input_dir}' does not exist!")
+                return False
+            
+            # Find zip files
+            zip_files = list(input_dir.glob('*.zip'))
+            if not zip_files:
+                print_warning("No zip files found!")
+                return False
+            
+            # Step 1: First unzip all files
+            print_info("\nStep 1: Unzipping files")
+            for zip_path in zip_files:
+                if not self.unzip_collection_file(zip_path, output_dir):
+                    print_error(f"Failed to unzip {zip_path.name}")
+                    return False
+            
+            # Step 2: Process extracted files
+            print_info("\nStep 2: Processing extracted files")
+            if mode == 'collection':
+                success = self.process_extracted_files(output_dir)
+            else:  # mode == 'zip'
+                success = True
+                for zip_path in zip_files:
+                    try:
+                        process_single_zip(zip_path, output_dir)
+                        if not check_process_single_zip(zip_path, output_dir):
+                            success = False
+                    except Exception as e:
+                        print_error(f"Error processing {zip_path.name}: {str(e)}")
+                        success = False
+            
+            return success
+            
+        except Exception as e:
+            print_error(f"Error processing files: {str(e)}")
+            return False
+
     def process_zip_files(self, input_dir: str = 'runtime', output_dir: str = 'runtime_zip') -> bool:
-        """Process all zip files in input directory and save results to output directory
-        Args:
-            input_dir: Directory containing zip files to process. Defaults to 'runtime'
-            output_dir: Directory to save processed files. Defaults to 'runtime_zip'
-        Returns:
-            bool: True if processing was successful, False otherwise
-        """
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-        
-        print_info(f"\nProcessing zip files from: {input_dir}")
-        print_info(f"Saving results to: {output_dir}")
-        
-        output_dir.mkdir(exist_ok=True)
-        
-        if not input_dir.exists():
-            print_error(f"Error: Source directory '{input_dir}' does not exist!")
-            return False
-        
-        zip_files = list(input_dir.glob('*.zip'))
-        if not zip_files:
-            print_error(f"No zip files found in {input_dir}!")
-            return False
-        
-        success = True
-        for zip_path in zip_files:
-            try:
-                process_single_zip(zip_path, output_dir)
-                if not check_process_single_zip(zip_path, output_dir):
-                    success = False
-            except Exception as e:
-                print_error(f"Error processing {zip_path.name}: {str(e)}")
-                success = False
-        
-        return success
+        """Process all zip files in input directory and save results to output directory"""
+        return self.process_files(input_dir, output_dir, mode='zip')
+
+    def process_collection_data(self) -> bool:
+        """Process all collection data"""
+        return self.process_files(mode='collection')
 
     def run_windows_test(self) -> bool:
         """Run Windows testing functionality"""
@@ -1465,30 +1487,7 @@ class CollectorManager:
 
     def clean_runtime_directory(self) -> bool:
         """Clean the runtime directory by removing all files"""
-        runtime_dir = "./runtime"
-        try:
-            if not os.path.exists(runtime_dir):
-                os.makedirs(runtime_dir)
-                self.update_status("Created clean runtime directory")
-                return True
-                
-            for filename in os.listdir(runtime_dir):
-                file_path = os.path.join(runtime_dir, filename)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                    elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                except Exception as e:
-                    self.update_status(f"Failed to remove {file_path}: {str(e)}", True)
-                    return False
-                    
-            self.update_status("Cleaned runtime directory")
-            return True
-            
-        except Exception as e:
-            self.update_status(f"Failed to clean runtime directory: {str(e)}", True)
-            return False
+        return self.clean_all_directories(['runtime'])
 
     def pull_files_by_pattern(self, remote_pattern: str, local_dir: str = "./runtime") -> bool:
         """Pull files matching a pattern from remote system"""
@@ -1686,41 +1685,6 @@ class CollectorManager:
                 
         except Exception as e:
             print_error(f"Failed to pull file: {str(e)}")
-            return False
-
-    def process_collection_data(self) -> bool:
-        """Process all collection data"""
-        try:
-            print_info("\nProcessing collection data")
-            
-            # Look for zip files in runtime directory
-            runtime_dir = "./runtime"
-            zip_files = [f for f in os.listdir(runtime_dir) if f.endswith('.zip')]
-            
-            if not zip_files:
-                print_warning("No collection zip files found")
-                return False
-            
-            # Create runtime_zip directory if it doesn't exist
-            runtime_zip_dir = Path('runtime_zip')
-            runtime_zip_dir.mkdir(exist_ok=True)
-            
-            # Step 1: First unzip all files
-            print_info("\nStep 1: Unzipping all collection files")
-            for zip_file in zip_files:
-                zip_path = Path(os.path.join(runtime_dir, zip_file))
-                if not self.unzip_collection_file(zip_path, runtime_zip_dir):
-                    print_error(f"Failed to unzip {zip_file}")
-                    return False
-            
-            # Step 2: Process all extracted files
-            print_info("\nStep 2: Processing all extracted files")
-            success = self.process_extracted_files(runtime_zip_dir)
-            
-            return success
-            
-        except Exception as e:
-            print_error(f"Error processing collection data: {str(e)}")
             return False
 
     def unzip_collection_file(self, zip_path: Path, runtime_zip_dir: Path) -> bool:

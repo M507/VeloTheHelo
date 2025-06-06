@@ -243,9 +243,7 @@ The command line interface uses the following default directories:
 - Source type identification
 - Additional metadata
 
-## Operating System Compatibility
-
-⚠️ Important Notes:
+#### Operating System Compatibility
 - This project was developed and tested on Windows
 - Limited testing on Linux and macOS
 - Known compatibility issues:

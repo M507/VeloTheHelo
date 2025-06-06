@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artifact Processor</title>
+    <title>Velo The Helo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
@@ -224,6 +224,13 @@
         .artifact-suggestion:hover {
             background-color: #f8f9fa;
         }
+        /* Add new styles for processing button */
+        .btn-processing {
+            background-color: #dc3545 !important;
+            border-color: #dc3545 !important;
+            color: white !important;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -415,11 +422,11 @@
                     </div>
                 </div>
 
-                <!-- Artifact Processing Statistics -->
+                <!-- Statistics Dashboard -->
                 <div id="profile-statistics" class="mt-4" style="display: none;">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Artifact Processing Statistics</h5>
+                            <h5 class="card-title">Processing Statistics</h5>
                             <div class="row">
                                 <div class="col-md-3">
                                     <div class="stat-card">
@@ -450,7 +457,7 @@
                     </div>
                 </div>
 
-                <!-- Status Messages Window -->
+                <!-- Status Messages -->
                 <div id="profile-status-messages" class="mt-4" style="display: none;">
                     <div class="card">
                         <div class="card-body">
@@ -469,12 +476,6 @@
                             <h5 class="card-title">Results</h5>
                             <div id="profile-results-content">
                                 <!-- Results will be populated here -->
-                            </div>
-                            <div id="profile-file-results" class="mt-4">
-                                <h5>File Contents</h5>
-                                <div id="profile-files-list" class="results-list">
-                                    <!-- File contents will be populated here -->
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -537,9 +538,10 @@
             const buildCollectors = document.getElementById('build-collectors');
             formData.set('build_collectors', buildCollectors.checked ? 'true' : 'false');
             
-            // Disable the submit button and show loading state
+            // Disable the submit button and show processing state
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
+            submitBtn.classList.add('btn-processing');
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             
             fetch('/start', {
@@ -551,6 +553,10 @@
                 if (data.error) {
                     console.error('Error:', data.error);
                     alert('Error: ' + data.error);
+                    // Reset button on error
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('btn-processing');
+                    submitBtn.innerHTML = '<i class="fas fa-play"></i> Start Processing';
                 } else {
                     console.log('Success:', data);
                     // Start polling for status updates
@@ -560,10 +566,9 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error: ' + error);
-            })
-            .finally(() => {
-                // Re-enable the submit button and restore original text
+                // Reset button on error
                 submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-processing');
                 submitBtn.innerHTML = '<i class="fas fa-play"></i> Start Processing';
             });
         });
@@ -712,7 +717,10 @@
                     
                     if (!data.processing) {
                         isProcessing = false;
-                        document.getElementById('submit-btn').disabled = false;
+                        const submitBtn = document.getElementById('submit-btn');
+                        submitBtn.disabled = false;
+                        submitBtn.classList.remove('btn-processing');
+                        submitBtn.innerHTML = '<i class="fas fa-play"></i> Start Processing';
                         return false; // Stop polling
                     }
                 }
@@ -720,6 +728,11 @@
                 return true; // Continue polling
             } catch (error) {
                 console.error('Error fetching status:', error);
+                // Reset button on error during polling
+                const submitBtn = document.getElementById('submit-btn');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-processing');
+                submitBtn.innerHTML = '<i class="fas fa-play"></i> Start Processing';
                 return true; // Continue polling despite error
             }
         }
@@ -1057,171 +1070,7 @@
             setTimeout(poll, 1000);
         }
 
-        // Function to update profile testing status
-        async function updateProfileStatus() {
-            try {
-                const response = await fetch('/profile-status');
-                const data = await response.json();
-
-                // Show all sections
-                document.getElementById('profile-progress').style.display = 'block';
-                document.getElementById('profile-status-messages').style.display = 'block';
-                document.getElementById('profile-statistics').style.display = 'block';
-
-                // Update progress bar
-                const progress = data.total_artifacts ? 
-                    Math.round((data.processed_artifacts / data.total_artifacts) * 100) : 0;
-                document.getElementById('profile-progress-bar').style.width = `${progress}%`;
-                document.getElementById('profile-progress-bar').textContent = `${progress}%`;
-
-                // Update statistics
-                if (data.statistics) {
-                    document.getElementById('profile-artifacts-processed').textContent = data.statistics.artifacts_processed;
-                    document.getElementById('profile-success-rate').textContent = `${data.statistics.success_rate}%`;
-                    document.getElementById('profile-total-time').textContent = `${data.statistics.total_execution_time}s`;
-                    document.getElementById('profile-avg-time').textContent = `${data.statistics.average_execution_time}s`;
-                }
-
-                // Update status messages
-                const messagesContainer = document.getElementById('profile-messages-container');
-                messagesContainer.innerHTML = data.messages.map(msg => `
-                    <div class="status-message ${msg.type || 'info'}">
-                        <span class="timestamp">[${msg.timestamp}]</span>
-                        <span class="message-content">${msg.message}</span>
-                        ${msg.elapsed ? `<span class="elapsed-time">${msg.elapsed}</span>` : ''}
-                    </div>
-                `).join('');
-
-                // Auto-scroll to the bottom of the messages container
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-                // If processing is complete, show results
-                if (data.completed) {
-                    document.getElementById('profile-results').style.display = 'block';
-                    // Update results content
-                    const resultsContent = document.getElementById('profile-results-content');
-                    const filesContent = document.getElementById('profile-files-list');
-                    
-                    if (data.artifact_results && data.artifact_results.length > 0) {
-                        const result = data.artifact_results[0];
-                        resultsContent.innerHTML = `
-                            <div class="card mb-3">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted">Test Run at ${result.timestamp}</h6>
-                                    
-                                    <!-- Artifact Statistics -->
-                                    <div class="row mb-4">
-                                        <div class="col-md-6">
-                                            <h6>Successful Artifacts (${result.stats.successful.length})</h6>
-                                            <div class="artifact-list">
-                                                ${result.stats.successful.map(artifact => `
-                                                    <div class="artifact-item">
-                                                        <div class="artifact-info">
-                                                            <i class="fas fa-check-circle text-success"></i>
-                                                            <span class="artifact-name">${artifact.name}</span>
-                                                        </div>
-                                                        <div class="artifact-meta">
-                                                            <span class="execution-time">
-                                                                <i class="fas fa-stopwatch"></i>
-                                                                ${artifact.execution_time}s
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <h6>Failed Artifacts (${result.stats.failed.length})</h6>
-                                            <div class="artifact-list">
-                                                ${result.stats.failed.map(artifact => `
-                                                    <div class="artifact-item">
-                                                        <div class="artifact-info">
-                                                            <i class="fas fa-times-circle text-danger"></i>
-                                                            <span class="artifact-name">${artifact.name}</span>
-                                                        </div>
-                                                        <div class="artifact-meta">
-                                                            <span class="execution-time">
-                                                                <i class="fas fa-stopwatch"></i>
-                                                                ${artifact.execution_time}s
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-
-                        // Update file contents section - matching the individual testing tab format
-                        if (result.results && result.results.length > 0) {
-                            filesContent.innerHTML = result.results.map(result => {
-                                if (result.preview && result.preview.length > 0) {
-                                    const jsonLines = result.preview.slice(-2).map((line, index) => {
-                                        const formattedJSON = formatJSON(line);
-                                        return `
-                                            <div class="json-line">
-                                                <div class="json-line-header">
-                                                    <button class="toggle-btn" onclick="toggleJSON(this)">
-                                                        <i class="fas fa-minus"></i>
-                                                    </button>
-                                                    <span>Line ${result.preview.length - 2 + index + 1}</span>
-                                                    <button class="copy-btn" onclick="copyJSON(this)">
-                                                        <i class="fas fa-copy"></i>
-                                                    </button>
-                                                </div>
-                                                <div class="json-line-content">
-                                                    <pre><code class="language-json">${formattedJSON}</code></pre>
-                                                </div>
-                                            </div>
-                                        `;
-                                    }).join('');
-
-                                    return `
-                                        <div class="file-item">
-                                            <i class="fas fa-file"></i> ${result.path}
-                                            <div class="json-preview">
-                                                ${jsonLines}
-                                            </div>
-                                        </div>
-                                    `;
-                                }
-                                return `
-                                    <div class="file-item">
-                                        <i class="fas fa-file"></i> ${result.path}
-                                    </div>
-                                `;
-                            }).join('');
-                        } else {
-                            filesContent.innerHTML = '<div class="alert alert-info">Loading file contents...</div>';
-                        }
-
-                        // Initialize syntax highlighting for new content
-                        document.querySelectorAll('pre code').forEach((block) => {
-                            hljs.highlightBlock(block);
-                        });
-                    }
-                    return false; // Stop polling
-                }
-                return true; // Continue polling
-            } catch (error) {
-                console.error('Error fetching profile status:', error);
-                return true; // Continue polling despite error
-            }
-        }
-
-        // Function to start profile status polling
-        function startProfileStatusPolling() {
-            const poll = async () => {
-                if (await updateProfileStatus()) {
-                    setTimeout(poll, 1000);
-                }
-            };
-            poll();
-        }
-
-        // Add event listener for the start profile testing button
+        // Function to start profile testing
         document.getElementById('start-profile-testing').addEventListener('click', function() {
             const selectedProfile = document.querySelector('input[name="profile-selection"]:checked');
             
@@ -1237,7 +1086,7 @@
             }
 
             const data = {
-                profile: selectedProfile.value,
+                profiles: [selectedProfile.value], // Backend expects an array of profile IDs
                 host: host,
                 buildCollectors: document.getElementById('build-collectors-profile').checked
             };
@@ -1279,6 +1128,117 @@
                 button.innerHTML = '<i class="fas fa-play"></i> Start Profile Testing';
             });
         });
+
+        // Function to update profile status
+        async function updateProfileStatus() {
+            try {
+                const response = await fetch('/profile-status');
+                const data = await response.json();
+
+                // Show all sections
+                document.getElementById('profile-progress').style.display = 'block';
+                document.getElementById('profile-status-messages').style.display = 'block';
+                document.getElementById('profile-statistics').style.display = 'block';
+
+                // Update progress bar
+                const progress = data.total_artifacts ? 
+                    Math.round((data.processed_artifacts / data.total_artifacts) * 100) : 0;
+                document.getElementById('profile-progress-bar').style.width = `${progress}%`;
+                document.getElementById('profile-progress-bar').textContent = `${progress}%`;
+
+                // Update statistics if available
+                if (data.statistics) {
+                    document.getElementById('profile-artifacts-processed').textContent = data.statistics.artifacts_processed;
+                    document.getElementById('profile-success-rate').textContent = `${data.statistics.success_rate}%`;
+                    document.getElementById('profile-total-time').textContent = `${data.statistics.total_execution_time}s`;
+                    document.getElementById('profile-avg-time').textContent = `${data.statistics.average_execution_time}s`;
+                }
+
+                // Update status messages
+                const messagesContainer = document.getElementById('profile-messages-container');
+                messagesContainer.innerHTML = data.messages.map(msg => `
+                    <div class="status-message ${msg.type || 'info'}">
+                        <span class="timestamp">[${msg.timestamp}]</span>
+                        <span class="message-content">${msg.message}</span>
+                        ${msg.elapsed ? `<span class="elapsed-time">${msg.elapsed}</span>` : ''}
+                    </div>
+                `).join('');
+
+                // Auto-scroll to the bottom of the messages container
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // If processing is complete, show results
+                if (data.completed && data.artifact_results && data.artifact_results.length > 0) {
+                    document.getElementById('profile-results').style.display = 'block';
+                    const result = data.artifact_results[0];
+                    
+                    // Update results content
+                    document.getElementById('profile-results-content').innerHTML = `
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-subtitle mb-2 text-muted">Test Run at ${result.timestamp}</h6>
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6>Successful Artifacts (${result.stats.successful.length})</h6>
+                                        <div class="artifact-list">
+                                            ${result.stats.successful.map(artifact => `
+                                                <div class="artifact-item">
+                                                    <div class="artifact-info">
+                                                        <i class="fas fa-check-circle text-success"></i>
+                                                        <span class="artifact-name">${artifact.name}</span>
+                                                    </div>
+                                                    <div class="artifact-meta">
+                                                        <span class="execution-time">
+                                                            <i class="fas fa-stopwatch"></i>
+                                                            ${artifact.execution_time}s
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Failed Artifacts (${result.stats.failed.length})</h6>
+                                        <div class="artifact-list">
+                                            ${result.stats.failed.map(artifact => `
+                                                <div class="artifact-item">
+                                                    <div class="artifact-info">
+                                                        <i class="fas fa-times-circle text-danger"></i>
+                                                        <span class="artifact-name">${artifact.name}</span>
+                                                    </div>
+                                                    <div class="artifact-meta">
+                                                        <span class="execution-time">
+                                                            <i class="fas fa-stopwatch"></i>
+                                                            ${artifact.execution_time}s
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    return false; // Stop polling
+                }
+                return true; // Continue polling
+            } catch (error) {
+                console.error('Error fetching profile status:', error);
+                return true; // Continue polling despite error
+            }
+        }
+
+        // Function to start profile status polling
+        function startProfileStatusPolling() {
+            const poll = async () => {
+                if (await updateProfileStatus()) {
+                    setTimeout(poll, 1000);
+                }
+            };
+            poll();
+        }
 
         function updateTestProfileStatus() {
             fetch('/test-profile-status')

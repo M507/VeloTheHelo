@@ -417,7 +417,41 @@
                             <div class="progress mb-3">
                                 <div id="profile-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
                             </div>
-                            <div id="profile-status" class="artifact-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Artifact Processing Statistics -->
+                <div id="profile-statistics" class="mt-4" style="display: none;">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Artifact Processing Statistics</h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="stat-card">
+                                        <div class="stat-label">Artifacts Processed</div>
+                                        <div class="stat-value" id="profile-artifacts-processed">0</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-card">
+                                        <div class="stat-label">Success Rate</div>
+                                        <div class="stat-value" id="profile-success-rate">0%</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-card">
+                                        <div class="stat-label">Total Execution Time</div>
+                                        <div class="stat-value" id="profile-total-time">0s</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-card">
+                                        <div class="stat-label">Average Execution Time</div>
+                                        <div class="stat-value" id="profile-avg-time">0s</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -439,7 +473,9 @@
                     <div class="card">
                         <div class="card-body">
                             <h5 class="card-title">Results</h5>
-                            <div id="profile-results-content"></div>
+                            <div id="profile-results-content">
+                                <!-- Results will be populated here -->
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1027,15 +1063,24 @@
                 const response = await fetch('/profile-status');
                 const data = await response.json();
 
-                // Show progress section and status messages
+                // Show all sections
                 document.getElementById('profile-progress').style.display = 'block';
                 document.getElementById('profile-status-messages').style.display = 'block';
+                document.getElementById('profile-statistics').style.display = 'block';
 
                 // Update progress bar
                 const progress = data.total_artifacts ? 
                     Math.round((data.processed_artifacts / data.total_artifacts) * 100) : 0;
                 document.getElementById('profile-progress-bar').style.width = `${progress}%`;
                 document.getElementById('profile-progress-bar').textContent = `${progress}%`;
+
+                // Update statistics
+                if (data.statistics) {
+                    document.getElementById('profile-artifacts-processed').textContent = data.statistics.artifacts_processed;
+                    document.getElementById('profile-success-rate').textContent = `${data.statistics.success_rate}%`;
+                    document.getElementById('profile-total-time').textContent = `${data.statistics.total_execution_time}s`;
+                    document.getElementById('profile-avg-time').textContent = `${data.statistics.average_execution_time}s`;
+                }
 
                 // Update status messages
                 const messagesContainer = document.getElementById('profile-messages-container');
@@ -1056,11 +1101,14 @@
                     // Update results content
                     const resultsContent = document.getElementById('profile-results-content');
                     if (data.artifact_results && data.artifact_results.length > 0) {
-                        resultsContent.innerHTML = data.artifact_results.map(result => `
+                        const result = data.artifact_results[0];
+                        resultsContent.innerHTML = `
                             <div class="card mb-3">
                                 <div class="card-body">
                                     <h6 class="card-subtitle mb-2 text-muted">Test Run at ${result.timestamp}</h6>
-                                    <div class="row">
+                                    
+                                    <!-- Artifact Statistics -->
+                                    <div class="row mb-4">
                                         <div class="col-md-6">
                                             <h6>Successful Artifacts (${result.stats.successful.length})</h6>
                                             <div class="artifact-list">
@@ -1100,15 +1148,45 @@
                                             </div>
                                         </div>
                                     </div>
+
+                                    <!-- JSON File Contents -->
+                                    <div class="mt-4">
+                                        <h6>JSON File Contents</h6>
+                                        ${result.json_files ? result.json_files.map(file => `
+                                            <div class="file-item">
+                                                <i class="fas fa-file"></i> ${file.path}
+                                                <div class="json-preview">
+                                                    ${file.lines.map((line, index) => `
+                                                        <div class="json-line">
+                                                            <div class="json-line-header">
+                                                                <button class="toggle-btn" onclick="toggleJSON(this)">
+                                                                    <i class="fas fa-minus"></i>
+                                                                </button>
+                                                                <span>Line ${index + 1}</span>
+                                                                <button class="copy-btn" onclick="copyJSON(this)">
+                                                                    <i class="fas fa-copy"></i>
+                                                                </button>
+                                                            </div>
+                                                            <div class="json-line-content">
+                                                                <pre><code class="language-json">${formatJSON(line)}</code></pre>
+                                                            </div>
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            </div>
+                                        `).join('') : '<div class="alert alert-info">No JSON files found</div>'}
+                                    </div>
                                 </div>
                             </div>
-                        `).join('');
-                    } else {
-                        resultsContent.innerHTML = '<div class="alert alert-info">No results available.</div>';
+                        `;
+
+                        // Initialize syntax highlighting for new content
+                        document.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightBlock(block);
+                        });
                     }
                     return false; // Stop polling
                 }
-
                 return true; // Continue polling
             } catch (error) {
                 console.error('Error fetching profile status:', error);

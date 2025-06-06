@@ -301,6 +301,9 @@ def start_profile_testing():
             if not credentials:
                 return jsonify({'error': 'Failed to get credentials'}), 500
             collector_manager.credentials = credentials
+            winrm_session = collector_manager.create_winrm_session(credentials)
+            if not collector_manager.cleanup_remote_files(winrm_session):
+                    print_warning("Proceeding despite cleanup issues...")
             
             # Initialize WinRM session if building collectors
             if build_collectors:
@@ -339,7 +342,13 @@ def process_profile_artifacts(artifacts, build_collectors):
             'total_artifacts': len(artifacts),
             'processed_artifacts': 0,
             'current_artifact': '',
-            'artifact_results': []
+            'artifact_results': [],
+            'statistics': {
+                'total_execution_time': 0,
+                'average_execution_time': 0,
+                'success_rate': 0,
+                'artifacts_processed': 0
+            }
         })
 
         # Update status message
@@ -350,24 +359,94 @@ def process_profile_artifacts(artifacts, build_collectors):
         # Process all artifacts in a single spec
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         spec_name = f"profile_test_{timestamp}"
+        start_time = time.time()
         success = collector_manager.process_artifact_combination(artifacts, build_collectors)
+        total_execution_time = time.time() - start_time
         
+        if success and build_collectors:
+            # Pull all collection data (zip files)
+            collector_manager.update_status("Pulling collection data...")
+            if collector_manager.pull_collection_data():
+                # Process the pulled data
+                collector_manager.update_status("Processing collection data...")
+                if collector_manager.process_collection_data():
+                    # After processing, analyze JSON files and verify outputs
+                    collector_manager.update_status("Analyzing JSON results...")
+                    runtime_dir = "./runtime"
+                    json_files = []
+                    
+                    # First verify execution output
+                    output_file = os.path.join(runtime_dir, "execution_output.txt")
+                    if os.path.exists(output_file):
+                        with open(output_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            if "Exiting" in content:
+                                collector_manager.update_status("Execution verification passed: Found 'Exiting' in output")
+                            else:
+                                collector_manager.update_status("Execution verification failed: 'Exiting' not found in output", True)
+                    
+                    # Then analyze all JSON files
+                    for root, _, files in os.walk(runtime_dir):
+                        for file in files:
+                            if file.endswith('.json'):
+                                file_path = os.path.join(root, file)
+                                try:
+                                    with open(file_path, 'r') as f:
+                                        lines = f.readlines()
+                                        if len(lines) >= 2:
+                                            collector_manager.update_status(f"\n{file} (last 2 lines):")
+                                            # Show the last two lines with line numbers
+                                            for i, line in enumerate(lines[-2:], start=len(lines)-1):
+                                                collector_manager.update_status(f"Line {i+1}: {line.strip()}")
+                                            
+                                            # Store JSON file contents for results
+                                            json_files.append({
+                                                'path': file,
+                                                'lines': [line.strip() for line in lines]
+                                            })
+                                except Exception as e:
+                                    collector_manager.update_status(f"Error reading {file}: {str(e)}", True)
+
+        # Calculate statistics
+        artifact_stats = collector_manager.get_status()['artifact_stats']
+        successful_artifacts = len(artifact_stats.get('successful', []))
+        failed_artifacts = len(artifact_stats.get('failed', []))
+        total_artifacts = successful_artifacts + failed_artifacts
+        
+        if total_artifacts > 0:
+            success_rate = (successful_artifacts / total_artifacts) * 100
+            avg_execution_time = total_execution_time / total_artifacts
+        else:
+            success_rate = 0
+            avg_execution_time = 0
+
+        # Update statistics
+        collector_manager.status['statistics'] = {
+            'total_execution_time': round(total_execution_time, 2),
+            'average_execution_time': round(avg_execution_time, 2),
+            'success_rate': round(success_rate, 2),
+            'artifacts_processed': total_artifacts
+        }
+
         # Store results
         result = {
             'artifacts': artifacts,
             'success': success,
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'stats': collector_manager.get_status()['artifact_stats']
+            'stats': artifact_stats,
+            'execution_time': round(total_execution_time, 2),
+            'json_files': json_files  # Add JSON files to results
         }
         collector_manager.status['artifact_results'] = [result]
-
         collector_manager.status['completed'] = True
-        collector_manager.update_status("Profile testing completed")
+        collector_manager.status['processing'] = False  # Reset processing flag
+        collector_manager.update_status("Processing completed")
 
     except Exception as e:
-        collector_manager.update_status(f"Error during profile testing: {str(e)}", True)
-    finally:
-        collector_manager.status['processing'] = False
+        app.logger.error(f"Error in process_profile_artifacts: {str(e)}")
+        collector_manager.update_status(f"Error processing artifacts: {str(e)}", True)
+        collector_manager.status['completed'] = True
+        collector_manager.status['processing'] = False  # Reset processing flag on error
 
 @app.route('/profile-status')
 def get_profile_status():

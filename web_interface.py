@@ -193,6 +193,115 @@ def get_status():
     status['runtime_stats'] = get_runtime_stats()
     return jsonify(status)
 
+@app.route('/cleanup', methods=['POST'])
+def cleanup():
+    """Clean up local and remote files"""
+    global collector_manager
+    
+    if not request.is_json:
+        return jsonify({'error': 'Request must be JSON'}), 400
+        
+    data = request.get_json()
+    host = data.get('host')
+    
+    if not host:
+        return jsonify({'error': 'No host selected'}), 400
+    
+    try:
+        status_messages = []
+        errors = []
+        
+        # Set the appropriate host in environment variables
+        if host == 'win10':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN10')
+        elif host == 'win11':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN11')
+        elif host == 'winserver12':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer12')
+        elif host == 'winserver16':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer16')
+        elif host == 'winserver19':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer19')
+        elif host == 'winserver22':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer22')
+        elif host == 'winserver25':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer25')
+        else:
+            return jsonify({'error': 'Invalid host selected'}), 400
+        
+        status_messages.append(f"Selected host: {host}")
+        
+        # Create a temporary collector manager if none exists
+        if not collector_manager:
+            temp_collector_manager = CollectorManager(mode='batch')
+            status_messages.append("Created temporary collector manager")
+        else:
+            temp_collector_manager = collector_manager
+            status_messages.append("Using existing collector manager")
+        
+        # Clean local directories
+        try:
+            CollectorManager.clean_all_directories()
+            status_messages.append("Successfully cleaned local directories")
+        except Exception as e:
+            error_msg = f"Error cleaning local directories: {str(e)}"
+            app.logger.error(error_msg)
+            errors.append(error_msg)
+        
+        # Clean remote files
+        try:
+            credentials = get_winrm_credentials()
+            if not credentials:
+                error_msg = "Failed to get WinRM credentials"
+                app.logger.error(error_msg)
+                errors.append(error_msg)
+                raise Exception(error_msg)
+                
+            status_messages.append("Successfully obtained WinRM credentials")
+            
+            winrm_session = temp_collector_manager.create_winrm_session(credentials)
+            if not winrm_session:
+                error_msg = "Failed to create WinRM session"
+                app.logger.error(error_msg)
+                errors.append(error_msg)
+                raise Exception(error_msg)
+                
+            status_messages.append("Successfully created WinRM session")
+            
+            if not temp_collector_manager.cleanup_remote_files(winrm_session):
+                error_msg = "Failed to clean remote files"
+                app.logger.error(error_msg)
+                errors.append(error_msg)
+                raise Exception(error_msg)
+                
+            status_messages.append("Successfully cleaned remote files")
+            
+        except Exception as e:
+            if str(e) not in errors:  # Avoid duplicate error messages
+                error_msg = f"Error during remote cleanup: {str(e)}"
+                app.logger.error(error_msg)
+                errors.append(error_msg)
+        
+        # Prepare response
+        response = {
+            'status': 'error' if errors else 'success',
+            'messages': status_messages,
+            'errors': errors
+        }
+        
+        if errors:
+            return jsonify(response), 500
+        else:
+            return jsonify(response)
+        
+    except Exception as e:
+        app.logger.error(f"Unexpected error during cleanup: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'messages': status_messages if 'status_messages' in locals() else [],
+            'errors': [f"Unexpected error during cleanup: {str(e)}"]
+        }), 500
+
 @app.route('/results/<path:filename>')
 def download_result(filename):
     """Download processed result files"""

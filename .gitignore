@@ -12,6 +12,8 @@ collectors/
 specs
 !specs\test.yaml
 
+# Internal config files
+servers/
 
 *.pem
 

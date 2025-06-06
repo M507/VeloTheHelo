@@ -237,7 +237,7 @@
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div class="container">
-            <a class="navbar-brand" href="#">Artifact Processor</a>
+            <a class="navbar-brand" href="https://github.com/M507/velo_the_helo">Velo The Helo</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -296,10 +296,23 @@
                                 <input type="checkbox" class="form-check-input" id="build-collectors" name="build_collectors" value="true">
                                 <label class="form-check-label" for="build-collectors">Build Collectors</label>
                             </div>
-                            <button type="submit" class="btn btn-primary" id="submit-btn">
-                                <i class="fas fa-play"></i> Start Processing
-                            </button>
+                            <div class="btn-group">
+                                <button type="submit" class="btn btn-primary" id="submit-btn">
+                                    <i class="fas fa-play"></i> Start Processing
+                                </button>
+                                <button type="button" class="btn btn-warning" id="cleanup-btn" disabled>
+                                    <i class="fas fa-broom"></i> Cleanup
+                                </button>
+                            </div>
                         </form>
+                    </div>
+                </div>
+
+                <!-- Cleanup Status Section -->
+                <div class="card" id="cleanup-status-section" style="display: none;">
+                    <div class="card-body">
+                        <h5 class="card-title">Cleanup Status</h5>
+                        <div id="cleanup-messages" class="status-messages"></div>
                     </div>
                 </div>
 
@@ -404,9 +417,22 @@
                             </div>
                         </div>
 
-                        <button type="button" class="btn btn-primary" id="start-profile-testing">
-                            <i class="fas fa-play"></i> Start Profile Testing
-                        </button>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary" id="start-profile-testing">
+                                <i class="fas fa-play"></i> Start Profile Testing
+                            </button>
+                            <button type="button" class="btn btn-warning" id="cleanup-profile-btn" disabled>
+                                <i class="fas fa-broom"></i> Cleanup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cleanup Status Section for Profile Testing -->
+                <div class="card" id="cleanup-profile-status-section" style="display: none;">
+                    <div class="card-body">
+                        <h5 class="card-title">Cleanup Status</h5>
+                        <div id="cleanup-profile-messages" class="status-messages"></div>
                     </div>
                 </div>
 
@@ -515,6 +541,109 @@
 
     <script>
         let isProcessing = false;
+
+        // Function to display cleanup messages
+        function displayCleanupMessages(messages, errors, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            // Add status messages
+            messages.forEach(message => {
+                container.innerHTML += `
+                    <div class="status-message info">
+                        <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                        <span class="message-content"><i class="fas fa-info-circle"></i> ${message}</span>
+                    </div>
+                `;
+            });
+
+            // Add error messages if any
+            errors.forEach(error => {
+                container.innerHTML += `
+                    <div class="status-message error">
+                        <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                        <span class="message-content"><i class="fas fa-exclamation-circle"></i> ${error}</span>
+                    </div>
+                `;
+            });
+
+            // Scroll to the bottom of the messages
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Function to handle cleanup for both tabs
+        function handleCleanup(hostSelectId, cleanupBtnId, statusSectionId, messagesContainerId) {
+            const host = document.getElementById(hostSelectId).value;
+            if (!host) {
+                alert('Please select a target host before cleanup');
+                return;
+            }
+
+            // Show the status section
+            document.getElementById(statusSectionId).style.display = 'block';
+            const messagesContainer = document.getElementById(messagesContainerId);
+            messagesContainer.innerHTML = `
+                <div class="status-message info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    <span class="message-content"><i class="fas fa-spinner fa-spin"></i> Starting cleanup...</span>
+                </div>
+            `;
+
+            // Disable the cleanup button and show cleaning state
+            const cleanupBtn = document.getElementById(cleanupBtnId);
+            cleanupBtn.disabled = true;
+            cleanupBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning...';
+
+            fetch('/cleanup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ host: host })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    console.error('Cleanup errors:', data.errors);
+                    displayCleanupMessages(data.messages, data.errors, messagesContainerId);
+                } else {
+                    console.log('Cleanup success:', data.messages);
+                    displayCleanupMessages(data.messages, [], messagesContainerId);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                displayCleanupMessages([], [`Error during cleanup: ${error}`], messagesContainerId);
+            })
+            .finally(() => {
+                // Re-enable the cleanup button and restore original text
+                cleanupBtn.disabled = false;
+                cleanupBtn.innerHTML = '<i class="fas fa-broom"></i> Cleanup';
+            });
+        }
+
+        // Function to handle host selection for cleanup buttons
+        function handleHostSelection(hostSelectId, cleanupBtnId) {
+            const hostSelect = document.getElementById(hostSelectId);
+            const cleanupBtn = document.getElementById(cleanupBtnId);
+            
+            hostSelect.addEventListener('change', function() {
+                cleanupBtn.disabled = !this.value;
+            });
+        }
+
+        // Initialize host selection handlers for both tabs
+        handleHostSelection('host', 'cleanup-btn');
+        handleHostSelection('profile-host', 'cleanup-profile-btn');
+
+        // Add cleanup button handlers
+        document.getElementById('cleanup-btn').addEventListener('click', function() {
+            handleCleanup('host', 'cleanup-btn', 'cleanup-status-section', 'cleanup-messages');
+        });
+
+        document.getElementById('cleanup-profile-btn').addEventListener('click', function() {
+            handleCleanup('profile-host', 'cleanup-profile-btn', 'cleanup-profile-status-section', 'cleanup-profile-messages');
+        });
 
         // Handle profile selection
         document.getElementById('profile').addEventListener('change', function() {

@@ -373,11 +373,11 @@
 
                         <!-- Profile Selection -->
                         <div class="mb-3">
-                            <label class="form-label">Select Profiles to Test</label>
+                            <label class="form-label">Select Profile to Test</label>
                             <div class="profile-selection">
                                 {% for profile in profiles %}
                                 <div class="form-check">
-                                    <input type="checkbox" class="form-check-input profile-checkbox" id="profile-{{ profile.id }}" value="{{ profile.id }}">
+                                    <input type="radio" class="form-check-input profile-radio" name="profile-selection" id="profile-{{ profile.id }}" value="{{ profile.id }}">
                                     <label class="form-check-label" for="profile-{{ profile.id }}">
                                         {{ profile.name }} - {{ profile.description }}
                                     </label>
@@ -389,12 +389,6 @@
                         <!-- Profile Testing Options -->
                         <div class="mb-3">
                             <label class="form-label">Testing Settings</label>
-                            <div class="form-check mb-2">
-                                <input type="checkbox" class="form-check-input" id="sequential-execution">
-                                <label class="form-check-label" for="sequential-execution">
-                                    Execute artifacts sequentially
-                                </label>
-                            </div>
                             <div class="form-check mb-2">
                                 <input type="checkbox" class="form-check-input" id="build-collectors-profile">
                                 <label class="form-check-label" for="build-collectors-profile">
@@ -475,6 +469,12 @@
                             <h5 class="card-title">Results</h5>
                             <div id="profile-results-content">
                                 <!-- Results will be populated here -->
+                            </div>
+                            <div id="profile-file-results" class="mt-4">
+                                <h5>File Contents</h5>
+                                <div id="profile-files-list" class="results-list">
+                                    <!-- File contents will be populated here -->
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1100,6 +1100,8 @@
                     document.getElementById('profile-results').style.display = 'block';
                     // Update results content
                     const resultsContent = document.getElementById('profile-results-content');
+                    const filesContent = document.getElementById('profile-files-list');
+                    
                     if (data.artifact_results && data.artifact_results.length > 0) {
                         const result = data.artifact_results[0];
                         resultsContent.innerHTML = `
@@ -1148,37 +1150,52 @@
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- JSON File Contents -->
-                                    <div class="mt-4">
-                                        <h6>JSON File Contents</h6>
-                                        ${result.json_files ? result.json_files.map(file => `
-                                            <div class="file-item">
-                                                <i class="fas fa-file"></i> ${file.path}
-                                                <div class="json-preview">
-                                                    ${file.lines.map((line, index) => `
-                                                        <div class="json-line">
-                                                            <div class="json-line-header">
-                                                                <button class="toggle-btn" onclick="toggleJSON(this)">
-                                                                    <i class="fas fa-minus"></i>
-                                                                </button>
-                                                                <span>Line ${index + 1}</span>
-                                                                <button class="copy-btn" onclick="copyJSON(this)">
-                                                                    <i class="fas fa-copy"></i>
-                                                                </button>
-                                                            </div>
-                                                            <div class="json-line-content">
-                                                                <pre><code class="language-json">${formatJSON(line)}</code></pre>
-                                                            </div>
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        `).join('') : '<div class="alert alert-info">No JSON files found</div>'}
-                                    </div>
                                 </div>
                             </div>
                         `;
+
+                        // Update file contents section - matching the individual testing tab format
+                        if (result.results && result.results.length > 0) {
+                            filesContent.innerHTML = result.results.map(result => {
+                                if (result.preview && result.preview.length > 0) {
+                                    const jsonLines = result.preview.slice(-2).map((line, index) => {
+                                        const formattedJSON = formatJSON(line);
+                                        return `
+                                            <div class="json-line">
+                                                <div class="json-line-header">
+                                                    <button class="toggle-btn" onclick="toggleJSON(this)">
+                                                        <i class="fas fa-minus"></i>
+                                                    </button>
+                                                    <span>Line ${result.preview.length - 2 + index + 1}</span>
+                                                    <button class="copy-btn" onclick="copyJSON(this)">
+                                                        <i class="fas fa-copy"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="json-line-content">
+                                                    <pre><code class="language-json">${formattedJSON}</code></pre>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('');
+
+                                    return `
+                                        <div class="file-item">
+                                            <i class="fas fa-file"></i> ${result.path}
+                                            <div class="json-preview">
+                                                ${jsonLines}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                                return `
+                                    <div class="file-item">
+                                        <i class="fas fa-file"></i> ${result.path}
+                                    </div>
+                                `;
+                            }).join('');
+                        } else {
+                            filesContent.innerHTML = '<div class="alert alert-info">Loading file contents...</div>';
+                        }
 
                         // Initialize syntax highlighting for new content
                         document.querySelectorAll('pre code').forEach((block) => {
@@ -1206,11 +1223,10 @@
 
         // Add event listener for the start profile testing button
         document.getElementById('start-profile-testing').addEventListener('click', function() {
-            const selectedProfiles = Array.from(document.querySelectorAll('.profile-checkbox:checked'))
-                .map(checkbox => checkbox.value);
+            const selectedProfile = document.querySelector('input[name="profile-selection"]:checked');
             
-            if (selectedProfiles.length === 0) {
-                alert('Please select at least one profile to test.');
+            if (!selectedProfile) {
+                alert('Please select a profile to test.');
                 return;
             }
 
@@ -1221,9 +1237,8 @@
             }
 
             const data = {
-                profiles: selectedProfiles,
+                profile: selectedProfile.value,
                 host: host,
-                sequentialExecution: document.getElementById('sequential-execution').checked,
                 buildCollectors: document.getElementById('build-collectors-profile').checked
             };
 

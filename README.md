@@ -32,10 +32,10 @@ config/       -> Config files
 
 ### Web Interface
 ```bash
-python web_interface.py
+python web_interface.py --ssl
 ```
 
-Visit http://localhost:5000 and you're good to go.
+Visit https://localhost:5000 and you're good to go.
 
 ### Command Line
 

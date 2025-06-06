@@ -242,3 +242,12 @@ The command line interface uses the following default directories:
 - Standardized timestamps
 - Source type identification
 - Additional metadata
+
+## Operating System Compatibility
+
+⚠️ Important Notes:
+- This project was developed and tested on Windows
+- Limited testing on Linux and macOS
+- Known compatibility issues:
+  - Windows-style file paths (e.g., C:\path\to\file)
+- If running on Linux/macOS, expect to modify paths and some functionality

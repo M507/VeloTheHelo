@@ -1,14 +1,11 @@
 {
-    "name": "Windows CA Collection - Cipher Suite",
-    "description": "Comprehensive set of artifacts designed to collect forensic evidence from Windows systems, including file system activity (MFT, USN), user behavior, network data, scheduled tasks, logs (WELS), and more. Useful for both incident response and compromise assessment.",
+    "name": "Windows CA - no MFT, USN, Yara",
+    "description": "CA no MFT, USN, Yara.",
     "artifacts": [
-        "Custom.Cipher.Yara",
-        "Custom.Cipher.Windows.MFT",
-        "Custom.Cipher.Windows.USN",
-        "Custom.Cipher.Windows.Services",
         "Custom.Cipher.Windows.WELS.TaskScheduler",
         "Custom.Cipher.Windows.TaskScheduler",
         "Custom.Cipher.Windows.Network.Netstat",
+        "Custom.Cipher.Windows.Services",
         "Custom.Cipher.Windows.Prefetch",
         "Custom.Cipher.Windows.Processes",
         "Custom.Cipher.Windows.Pslist",

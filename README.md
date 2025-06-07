@@ -2,6 +2,12 @@
 
 This is a development and testing platform. It makes working with Velociraptor artifacts way less painful. It helps you test, validate, and deploy artifacts without losing your mind.
 
+Traditional methods of testing artifacts one by one through the Velociraptor GUI or command line can be time-consuming and error-prone. This platform streamlines the process by providing a structured environment where artifacts can be systematically tested, validated, and managed with version control.
+
+The "Individual Testing" tab allows you to focus on single artifacts during development or troubleshooting. This is particularly useful when you're creating new artifacts, debugging collection issues, or fine-tuning artifact parameters. For example, you can test a Windows Registry artifact in isolation to ensure it correctly collects the intended keys, or verify that a file system artifact properly handles different path conditions and permissions. The platform ensures your artifacts work reliably across different Windows versions (7, 11, Server 2012, 2022, etc.), service pack levels, and system configurations, helping you identify compatibility issues before deployment.
+
+The "Profile Testing" tab enables you to validate groups of artifacts that are commonly used together for specific investigation scenarios. For example, you can create and test profiles for IR investigations, CA engagements..etc. This helps with workflows where multiple artifacts need to work together seamlessly. Testing artifacts in combination rather than individually helps identify resource conflicts, timing issues, and dependencies between artifacts that wouldn't be apparent when testing them separately. 
+
 ## What's the Point?
 
 - **Test Your Artifacts**: Make sure they work across different OS versions before you deploy them

@@ -2,13 +2,13 @@
     "name": "Windows CA - no MFT, USN, Yara",
     "description": "CA no MFT, USN, Yara.",
     "artifacts": [
-        "Custom.Cipher.Windows.Network.Netstat",
         "Custom.Cipher.Windows.Services",
-        "Custom.Cipher.Windows.Prefetch",
         "Custom.Cipher.Windows.ChromeHistory",
+        "Custom.Cipher.Windows.USBSTOR",
         "Custom.Cipher.Windows.DLLs",
         "Custom.Cipher.Windows.RegKeys",
-        "Custom.Cipher.Windows.USBSTOR",
+        "Custom.Cipher.Windows.Network.Netstat",
+        "Custom.Cipher.Windows.Prefetch",
         "Custom.Cipher.Windows.Processes",
         "Custom.Cipher.Windows.Pslist",
         "Custom.Cipher.Windows.HostedServices",
@@ -51,6 +51,15 @@
         "Custom.Cipher.Windows.Programs",
         "Custom.Cipher.Windows.RunKeys",
         "Custom.Cipher.Windows.WebShells",
-        "Custom.Cipher.Windows.TaskScheduler"
+        "Custom.Cipher.Windows.TaskScheduler",
+        "Custom.Cipher.Windows.AnyDesk",
+        "Custom.Cipher.Windows.EdgeHistory",
+        "Custom.Cipher.Windows.FirefoxHistory",
+        "Custom.Cipher.Windows.OfficeMacros",
+        "Custom.Cipher.Windows.ApplicationShims",
+        "Custom.Cipher.Windows.Clipboard",
+        "Custom.Cipher.Windows.FileZilla",
+        "Custom.Cipher.Windows.DownloadedFiles",
+        "Custom.Cipher.Windows.Analysis.EvidenceOfDownload"
     ]
 }

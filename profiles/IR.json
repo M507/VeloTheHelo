@@ -1,8 +1,10 @@
 {
-    "name": "Windows CA Collection - Cipher Suite",
+    "name": "Windows IR Collection - Cipher Suite",
     "description": "Comprehensive set of artifacts designed to collect forensic evidence from Windows systems.",
     "artifacts": [
         "Custom.Cipher.Yara",
+        "Custom.Cipher.Windows.MFT",
+        "Custom.Cipher.Windows.USN",
         "Custom.Cipher.Windows.Services",
         "Custom.Cipher.Windows.ChromeHistory",
         "Custom.Cipher.Windows.USBSTOR",

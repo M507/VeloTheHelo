@@ -1,6 +1,6 @@
 # Velociraptor Collector Manager
 
-This makes working with Velociraptor artifacts way less painful. It helps you test, validate, and deploy artifacts without losing your mind.
+This is a development and testing platform. It makes working with Velociraptor artifacts way less painful. It helps you test, validate, and deploy artifacts without losing your mind.
 
 ## What's the Point?
 

@@ -16,6 +16,11 @@ specs
 
 # Internal config files
 servers/
+All_Windows_Cipher.txt
+
+# Testing
+test_*.json
+
 
 *.pem
 

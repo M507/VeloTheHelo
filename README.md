@@ -24,6 +24,7 @@ This makes working with Velociraptor artifacts way less painful. It helps you te
 #### Individual Testing 
 
 Benefits for developers:
+- Allows you to find which ones hangs forever
 - Clearer error messages for the specific artifact
 - Easier to debug and trace issues
 - Lets you focus on one artifact's behavior at a time

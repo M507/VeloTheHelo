@@ -17,6 +17,25 @@ This makes working with Velociraptor artifacts way less painful. It helps you te
 4. Add system info and timestamps
 5. Make sure everything's formatted nicely
 
+## Testing Approaches
+
+### Individual Testing vs Profiles
+
+#### Individual Testing 
+
+Benefits for developers:
+- Clearer error messages for the specific artifact
+- Easier to debug and trace issues
+- Lets you focus on one artifact's behavior at a time
+
+#### Profile Testing 
+Benefits for developers:
+- Tests how artifacts interact with each other
+- Validates resource usage when running multiple collectors
+- Ensures artifacts don't conflict or interfere
+- Better represents real-world deployment scenarios
+- Perfect for final testing before production
+
 ## Project Structure
 
 ```

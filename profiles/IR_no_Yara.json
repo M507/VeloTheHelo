@@ -2,7 +2,6 @@
     "name": "Windows IR Collection - Cipher Suite",
     "description": "Comprehensive set of artifacts designed to collect forensic evidence from Windows systems.",
     "artifacts": [
-        "Custom.Cipher.Yara.AllRules",
         "Custom.Cipher.Windows.MFT",
         "Custom.Cipher.Windows.USN",
         "Custom.Cipher.Windows.Services",

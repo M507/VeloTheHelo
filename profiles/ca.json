@@ -6,8 +6,10 @@
         "Custom.Cipher.Windows.MFT",
         "Custom.Cipher.Windows.USN",
         "Custom.Cipher.Windows.Services",
-        "Custom.Cipher.Windows.WELS.TaskScheduler",
-        "Custom.Cipher.Windows.TaskScheduler",
+        "Custom.Cipher.Windows.ChromeHistory",
+        "Custom.Cipher.Windows.USBSTOR",
+        "Custom.Cipher.Windows.DLLs",
+        "Custom.Cipher.Windows.RegKeys",
         "Custom.Cipher.Windows.Network.Netstat",
         "Custom.Cipher.Windows.Prefetch",
         "Custom.Cipher.Windows.Processes",
@@ -46,6 +48,12 @@
         "Custom.Cipher.Windows.WELS.WinRM",
         "Custom.Cipher.Windows.WELS.WindowsFirewall",
         "Custom.Cipher.Windows.WELS.WindowsPowershell",
-        "Custom.Cipher.Windows.WER"
+        "Custom.Cipher.Windows.WELS.TaskScheduler",
+        "Custom.Cipher.Windows.WER",
+        "Custom.Cipher.Windows.WMIPersistence",
+        "Custom.Cipher.Windows.Programs",
+        "Custom.Cipher.Windows.RunKeys",
+        "Custom.Cipher.Windows.WebShells",
+        "Custom.Cipher.Windows.TaskScheduler"
     ]
 }

@@ -8,6 +8,16 @@ The "Individual Testing" tab allows you to focus on single artifacts during deve
 
 The "Profile Testing" tab enables you to validate groups of artifacts that are commonly used together for specific investigation scenarios. For example, you can create and test profiles for IR investigations, CA engagements..etc. This helps with workflows where multiple artifacts need to work together seamlessly. Testing artifacts in combination rather than individually helps identify resource conflicts, timing issues, and dependencies between artifacts that wouldn't be apparent when testing them separately. 
 
+
+#### The deployment windows:
+![The deployment windows ](screenshots/1.png)
+
+
+#### Status  of executions + the first two lines of each output file:
+
+![Stat windows](screenshots/2.png)
+
+
 ## What's the Point?
 
 - **Test Your Artifacts**: Make sure they work across different OS versions before you deploy them

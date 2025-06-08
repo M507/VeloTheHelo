@@ -62,6 +62,28 @@ collectors/   -> Built Velociraptor collectors
 specs/        -> Artifact specs (YAML)
 binaries/     -> Velociraptor executables
 config/       -> Config files
+profiles/      -> profiles files
+```
+
+## Profiles Structure
+Profiles are JSON files that define groups of artifacts to be tested together. Ideally, these profiles should match your custom "CreateCollector" server artifact on Velociraptor. Each profile contains:
+- `name`: A unique identifier for the profile
+- `description`: Purpose and scope of the profile
+- `artifacts`: List of Velociraptor artifacts to be tested
+
+Example of a profile:
+```json
+{
+    "name": "IR_Profile",
+    "description": "Common artifacts for Client A",
+    "artifacts": [
+        "Custom.HH.Windows.MFT",
+        "Custom.HH.Windows.USN",
+        "Custom.HH.Windows.Prefetch",
+        "Custom.HH.Windows.Amcache",
+        "Custom.HH.Windows.DownloadedFiles"
+    ]
+}
 ```
 
 ## Getting Started

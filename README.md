@@ -162,15 +162,15 @@ VELO_BINARY_PATH=./binaries/velociraptor-v0.72.4-windows-amd64.exe
 ARTIFACT_TEMPLATE_PATH=./specs/test.yaml
 ```
 
-### Command Line Configuration
-The command line interface uses the following default directories:
-- `runtime/`: Default input directory for ZIP files
-- `runtime_zip/`: Default output directory for processed files
-- `collectors/`: Directory for built collectors
-- `specs/`: Directory for artifact specifications
+## Remote Host Requirements  (WINRM_HOST_*)
+The platform requires remote access to test hosts for executing, pulling, and pushing files:
+
+- **Windows Hosts**: 
+  - WinRM and SSH must be enabled and properly configured
+  - Default ports (5985 for HTTP, 5986 for HTTPS, and 22) must be accessible
+  - Appropriate credentials must be configured and the same in all remote hosts. I recommend using terraform to deploy the remote hosts with the same config
 
 ## OS Support
 
-This is primarily a Windows tool. It might work on Linux/macOS but you'll probably need to tweak some stuff (especially those Windows-style paths).
+This platform was primarily running on Windows. It might work on Linux/macOS but you'll probably need to tweak some stuff (especially those Windows-style paths).
 
-Need help? Open an issue then try to close it yourself. I believe in you : )

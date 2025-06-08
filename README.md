@@ -1,4 +1,4 @@
-# Velociraptor Collector Manager
+# VeloTheHelo
 
 This is a development and testing platform. It makes working with Velociraptor artifacts way less painful. It helps you test, validate, and deploy artifacts without losing your mind.
 
@@ -95,43 +95,6 @@ python web_interface.py --ssl
 
 Visit https://localhost:5000 and you're good to go.
 
-### Command Line
-
-The collector manager supports several modes and options:
-
-```bash
-python collector_manager.py --mode [mode] [options]
-```
-
-#### Available Modes
-- `batch`: Process multiple artifacts at once
-- `individual`: Process one artifact at a time
-- `windows_test`: Test Windows connectivity
-- `process_zip`: Process collection ZIP files
-
-#### Basic Examples
-
-```bash
-# Process ZIP files from default runtime directory
-python collector_manager.py --mode process_zip
-
-# Process ZIP files from custom directory
-python collector_manager.py --mode process_zip --input-dir "C:\collections" --output-dir "C:\results"
-
-# Process specific artifacts
-python collector_manager.py --mode batch --artifacts "Windows.System.HostsFile"
-
-# Build and process multiple artifacts
-python collector_manager.py --mode batch --artifacts "Windows.System.HostsFile,Windows.Network.NetstatEnriched" --build
-```
-
-#### Common Options
-```bash
---input-dir PATH     # Input directory for ZIP files (default: runtime/)
---output-dir PATH    # Output directory for results (default: runtime_zip/)
---artifacts LIST     # Comma-separated list of artifacts
---build             # Build collectors for specified artifacts
-```
 
 ## Requirements
 

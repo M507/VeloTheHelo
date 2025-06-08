@@ -1,6 +1,6 @@
 {
     "name": "Windows Event Log Sensors (WELS) Collection",
-    "description": "Focused collection of Windows Event Log artifacts designed to provide insight into system activities, security events, remote access, PowerShell usage, and other critical forensic evidence. Ideal for threat hunting and incident response investigations.",
+    "description": "Focused collection of Windows Event Log artifacts.",
     "artifacts": [
         "Custom.Cipher.Windows.WELS.Application",
         "Custom.Cipher.Windows.WELS.BitsJobs",

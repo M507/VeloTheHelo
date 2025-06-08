@@ -1,5 +1,5 @@
 {
-    "name": "Windows IR Collection - Cipher Suite",
+    "name": "Windows IR Collection no Yara - Cipher Suite",
     "description": "Comprehensive set of artifacts designed to collect forensic evidence from Windows systems.",
     "artifacts": [
         "Custom.Cipher.Windows.MFT",

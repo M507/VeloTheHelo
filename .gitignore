@@ -8,6 +8,9 @@ testing_specs/*
 collectors/*
 collectors/
 
+# profiles
+profiles/*
+
 # specs
 specs
 !specs\test.yaml

@@ -1,7 +1,0 @@
-{
-    "name": "Yara Scanner",
-    "description": "One Artifact to run Yara scanner",
-    "artifacts": [
-        "Custom.Cipher.Yara.AllRules"
-    ]
-} 

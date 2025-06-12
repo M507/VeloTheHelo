@@ -1,7 +1,0 @@
-{
-    "name": "Test",
-    "description": "One Artifact for collecting user information",
-    "artifacts": [
-        "Windows.Sys.AllUsers"
-    ]
-} 

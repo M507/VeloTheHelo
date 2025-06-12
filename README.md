@@ -4,9 +4,9 @@ This is a development and testing platform. It makes working with Velociraptor a
 
 Traditional methods of testing artifacts one by one through the Velociraptor GUI or command line can be time-consuming and error-prone. This platform streamlines the process by providing a one-interface environment where artifacts can be systematically tested, validated, and managed with version control.
 
-The "Individual Testing" tab allows you to focus on single artifacts during development or troubleshooting. This is useful when you're creating new artifacts, debugging collection issues, or fine-tuning artifact parameters, editing naming convesions. The platform ensures your artifacts work reliably across different Windows versions (7, 11, Server 2012, 2022, etc.), service pack levels, and system configurations, helping you identify compatibility issues before deployment.
+The "Individual Testing" tab allows you to focus on single artifacts during development or troubleshooting. This is useful when you're creating new artifacts, debugging collection issues, or fine-tuning artifact parameters and editing naming conventions. The platform ensures your artifacts work reliably across different Windows versions (7, 11, Server 2012, 2022, etc.), service pack levels, and system configurations, helping you identify compatibility issues before deployment.
 
-The "Profile Testing" tab enables you to validate groups of artifacts that you want to use together for specific investigation scenarios. For example, you can create and test profiles for IR engagements, CA engagements..etc. This helps with workflows where multiple artifacts need to work together. Testing artifacts in combination rather than individually helps identify resource conflicts, timing issues, and dependencies between artifacts that wouldn't be apparent when testing them separately. 
+The "Profile Testing" tab enables you to validate groups of artifacts that you want to use together for specific investigation scenarios. For example, you can create and test profiles for IR engagements, CA engagements, etc. This helps with workflows where multiple artifacts need to work together. Testing artifacts in combination rather than individually helps identify resource conflicts, timing issues, and dependencies between artifacts that wouldn't be apparent when testing them separately. 
 
 
 #### The deployment windows:
@@ -30,8 +30,8 @@ The "Profile Testing" tab enables you to validate groups of artifacts that you w
 1. Build and deploy collectors
 2. Run collections remotely
 3. Process and standardize data
-4. Add system info and timestamps
-5. Make sure everything's formatted nicely
+4. Add system info and timestamps for best analysis experience
+5. Make sure everything is formatted nicely
 
 ## Testing Approaches
 
@@ -40,8 +40,8 @@ The "Profile Testing" tab enables you to validate groups of artifacts that you w
 #### Individual Testing 
 
 Benefits for developers:
-- Allows you to find which ones hangs forever
-- Clearer error messages for the specific artifact
+- Allows you to find which artifacts hang forever
+- Provides clearer error messages for specific artifacts
 - Easier to debug and trace issues
 - Lets you focus on one artifact's behavior at a time
 
@@ -100,7 +100,7 @@ Visit https://localhost:5000 and you're good to go.
 
 - Python 3.x
 - Windows (for collector operations)
-- Some Python packages (check requirements.txt)
+- Required Python packages (check requirements.txt)
 - For web stuff: Flask, Flask-SocketIO, Werkzeug, eventlet
 
 ## Config
@@ -125,15 +125,15 @@ VELO_BINARY_PATH=./binaries/velociraptor-v0.72.4-windows-amd64.exe
 ARTIFACT_TEMPLATE_PATH=./specs/test.yaml
 ```
 
-## Remote Host Requirements  (WINRM_HOST_*)
+## Remote Host Requirements (WINRM_HOST_*)
 The platform requires remote access to test hosts for executing, pulling, and pushing files:
 
 - **Windows Hosts**: 
   - WinRM and SSH must be enabled and properly configured
   - Default ports (5985 for HTTP, 5986 for HTTPS, and 22) must be accessible
-  - Appropriate credentials must be configured and the same in all remote hosts. I recommend using terraform to deploy the remote hosts with the same config
+  - Appropriate credentials must be configured and be the same across all remote hosts. We recommend using Terraform to deploy the remote hosts with the same configuration
 
 ## OS Support
 
-This platform was primarily running on Windows. It might work on Linux/macOS but you'll probably need to tweak some stuff (especially those Windows-style paths).
+This platform primarily runs on Windows. It might work on Linux/macOS, but you'll probably need to tweak some things (especially those Windows-style paths).
 

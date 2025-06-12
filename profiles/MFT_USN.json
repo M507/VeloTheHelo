@@ -1,8 +1,0 @@
-{
-    "name": "MFT and USN",
-    "description": "artifacts for MFT and USN",
-    "artifacts": [
-        "Custom.Cipher.Windows.MFT",
-        "Custom.Cipher.Windows.USN"
-    ]
-}

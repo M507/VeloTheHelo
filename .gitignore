@@ -10,6 +10,8 @@ collectors/
 
 # profiles
 profiles/*
+!profiles/test.json
+!profiles/users.json
 
 # specs
 specs

@@ -19,6 +19,10 @@ specs
 
 .*
 
+# artifact_definitions
+artifact_definitions*
+artifact_definitions*/*
+
 # Internal config files
 servers/
 All_Windows_Cipher.txt

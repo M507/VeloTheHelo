@@ -1,0 +1,142 @@
+<!-- Profiles Testing Tab -->
+<div class="tab-pane fade" id="test-profiles">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Test Complete Profiles</h5>
+            
+            <!-- Host Selection -->
+            <div class="mb-3">
+                <label for="profile-host" class="form-label">Select Target Host</label>
+                <select class="form-select" id="profile-host" required>
+                    <option value="">Select a host...</option>
+                    <option value="win10">Windows 10</option>
+                    <option value="win11">Windows 11</option>
+                    <option value="winserver12">Windows Server 2012</option>
+                    <option value="winserver16">Windows Server 2016</option>
+                    <option value="winserver19">Windows Server 2019</option>
+                    <option value="winserver22">Windows Server 2022</option>
+                    <option value="winserver25">Windows Server 2025</option>
+                </select>
+            </div>
+
+            <!-- Profile Selection -->
+            <div class="mb-3">
+                <label class="form-label">Select Profile to Test</label>
+                <div class="profile-selection">
+                    {% for profile in profiles %}
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input profile-radio" name="profile-selection" id="profile-{{ profile.id }}" value="{{ profile.id }}">
+                        <label class="form-check-label" for="profile-{{ profile.id }}">
+                            {{ profile.name }} - {{ profile.description }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Profile Testing Options -->
+            <div class="mb-3">
+                <label class="form-label">Testing Settings</label>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="build-collectors-profile" checked disabled>
+                    <label class="form-check-label" for="build-collectors-profile">
+                        Build Collectors
+                    </label>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary" id="start-profile-testing">
+                    <i class="fas fa-play"></i> Start Profile Testing
+                </button>
+                <button type="button" class="btn btn-warning" id="cleanup-profile-btn" disabled>
+                    <i class="fas fa-broom"></i> Cleanup
+                </button>
+                <button type="button" class="btn btn-download-collector" id="download-collector-btn" disabled>
+                    <i class="fas fa-download"></i> Download Collector
+                </button>
+            </div>
+            <!-- Add download status message div -->
+            <div id="download-status" class="download-status"></div>
+        </div>
+    </div>
+
+    <!-- Cleanup Status Section for Profile Testing -->
+    <div class="card" id="cleanup-profile-status-section" style="display: none;">
+        <div class="card-body">
+            <h5 class="card-title">Cleanup Status</h5>
+            <div id="cleanup-profile-messages" class="status-messages"></div>
+        </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div id="profile-progress" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Processing Progress</h5>
+                <div class="progress mb-3">
+                    <div id="profile-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Dashboard -->
+    <div id="profile-statistics" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Processing Statistics</h5>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Artifacts Processed</div>
+                            <div class="stat-value" id="profile-artifacts-processed">0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Success Rate</div>
+                            <div class="stat-value" id="profile-success-rate">0%</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Execution Time</div>
+                            <div class="stat-value" id="profile-total-time">0s</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Average Execution Time</div>
+                            <div class="stat-value" id="profile-avg-time">0s</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="profile-status-messages" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Status Messages</h5>
+                <div class="status-messages" id="profile-messages-container">
+                    <!-- Status messages will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="profile-results" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Results</h5>
+                <div id="profile-results-content">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div> 

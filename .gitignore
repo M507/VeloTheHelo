@@ -14,6 +14,9 @@ specs
 
 .*
 
+# Backups
+*.bk
+
 # Internal config files
 servers/
 All_Windows_Cipher.txt

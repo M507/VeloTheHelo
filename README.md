@@ -123,6 +123,7 @@ VELO_DATASTORE=./datastore/
 VELO_SERVER_CONFIG=./datastore/server.config.yaml
 VELO_BINARY_PATH=./binaries/velociraptor-v0.72.4-windows-amd64.exe
 ARTIFACT_TEMPLATE_PATH=./specs/test.yaml
+ARCHITECTURY=/home/ubuntu/github_projects/architectury
 ```
 
 ## Remote Host Requirements (WINRM_HOST_*)

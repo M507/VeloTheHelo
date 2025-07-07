@@ -41,6 +41,7 @@ class Config:
         'WINRM_USERNAME': '',
         'WINRM_PASSWORD': '',
         'SSH_PORT': '22',
+        'ARCHITECTURY': '',
         
         # Velociraptor Paths
         'COLLECTOR_FILE': os.path.join('datastore', 'Collector_velociraptor-v0.72.4-windows-amd64.exe'),

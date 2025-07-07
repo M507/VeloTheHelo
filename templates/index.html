@@ -3,6 +3,7 @@
 {% block content %}
     {% include 'individual_testing.html' %}
     {% include 'profile_testing.html' %}
+    {% include 'architectury_testing.html' %}
 {% endblock %}
 
 {% block scripts %}
@@ -99,7 +100,7 @@
         });
     }
 
-    // Initialize host selection handlers for both tabs
+    // Initialize host selection handlers for all tabs
     handleHostSelection('host', 'cleanup-btn');
     handleHostSelection('profile-host', 'cleanup-profile-btn');
 
@@ -111,6 +112,8 @@
     document.getElementById('cleanup-profile-btn').addEventListener('click', function() {
         handleCleanup('profile-host', 'cleanup-profile-btn', 'cleanup-profile-status-section', 'cleanup-profile-messages');
     });
+
+
 
     // Handle profile selection
     document.getElementById('profile').addEventListener('change', function() {
@@ -125,6 +128,8 @@
             artifactsInput.setAttribute('required', 'required');
         }
     });
+
+
 
     document.getElementById('process-form').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -498,6 +503,180 @@
             showDownloadStatus('Cleanup in progress...', 'info');
             handleCleanup('profile-host', 'cleanup-profile-btn', 'cleanup-profile-status-section', 'cleanup-profile-messages');
         });
+
+        // Architectury testing functionality
+        $('#start-architectury-testing').off('click').on('click', function() {
+            console.log('Starting Architectury testing, resetting download button');
+            $('#download-architectury-collector-btn')
+                .prop('disabled', true)
+                .removeClass('enabled')
+                .attr('title', 'Processing in progress...');
+            showArchitecturyDownloadStatus('Processing in progress...', 'info');
+            
+            const platform = document.getElementById('architectury-platform').value;
+            const host = document.getElementById('architectury-host').value;
+            const buildCollectors = document.getElementById('architectury-build-collectors').checked;
+            
+            if (!platform) {
+                alert('Please select a target platform.');
+                return;
+            }
+            
+            if (!host) {
+                alert('Please select a target host.');
+                return;
+            }
+
+            // Use default artifacts for Architectury testing
+            const artifacts = ["Generic.Client.Info", "Windows.System.ProcessList"];
+
+            const data = {
+                artifacts: artifacts,
+                platform: platform,
+                host: host,
+                buildCollectors: buildCollectors,
+                useArchitectury: true
+            };
+
+            // Disable the button and show loading state
+            const button = this;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+            fetch('/start-architectury', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    alert('Error: ' + data.error);
+                } else {
+                    console.log('Success:', data);
+                    // Reset UI elements
+                    document.getElementById('architectury-progress').style.display = 'none';
+                    document.getElementById('architectury-status-messages').style.display = 'none';
+                    document.getElementById('architectury-results').style.display = 'none';
+                    // Start polling for status updates
+                    startArchitecturyStatusPolling();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error: ' + error);
+            })
+            .finally(() => {
+                // Re-enable the button and restore original text
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-rocket"></i> Start Architectury Testing';
+            });
+        });
+
+
+
+        // Architectury download button handler
+        $('#download-architectury-collector-btn').off('click').on('click', function(e) {
+            e.preventDefault();
+            console.log('Architectury download button clicked');
+            console.log('Button state:', {
+                disabled: $(this).prop('disabled'),
+                hasEnabledClass: $(this).hasClass('enabled')
+            });
+
+            if ($(this).hasClass('enabled')) {
+                console.log('Button is enabled, initiating download...');
+                showArchitecturyDownloadStatus('Starting collector download...', 'info');
+
+                // Make an AJAX call first to check if the collector exists
+                $.ajax({
+                    url: '/download-architectury-collector',
+                    method: 'GET',
+                    success: function(response) {
+                        console.log('Download check successful:', response);
+                        // If we got a successful response, trigger the actual download
+                        window.location.href = '/download-architectury-collector';
+                        showArchitecturyDownloadStatus('Download started successfully', 'info');
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Download check failed:', {xhr, status, error});
+                        let errorMessage = 'Failed to download collector: ';
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            errorMessage += response.error || error;
+                        } catch (e) {
+                            errorMessage += error;
+                        }
+                        showArchitecturyDownloadStatus(errorMessage, 'error');
+                    }
+                });
+            } else {
+                console.log('Button is disabled, ignoring click');
+                showArchitecturyDownloadStatus('Collector is not ready for download yet', 'error');
+            }
+        });
+
+        // Architectury cleanup button handler
+        $('#cleanup-architectury-btn').off('click').on('click', function() {
+            const host = document.getElementById('architectury-host').value;
+            if (!host) {
+                alert('Please select a target host before cleanup');
+                return;
+            }
+
+            // Show the cleanup status section
+            document.getElementById('architectury-cleanup-status-section').style.display = 'block';
+            const messagesContainer = document.getElementById('architectury-cleanup-messages');
+            messagesContainer.innerHTML = `
+                <div class="status-message info">
+                    <span class="timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    <span class="message-content"><i class="fas fa-spinner fa-spin"></i> Starting cleanup...</span>
+                </div>
+            `;
+
+            // Disable the cleanup button and show cleaning state
+            const cleanupBtn = this;
+            cleanupBtn.disabled = true;
+            cleanupBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning...';
+
+            fetch('/cleanup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ host: host })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    console.error('Cleanup errors:', data.errors);
+                    displayCleanupMessages(data.messages, data.errors, 'architectury-cleanup-messages');
+                } else {
+                    console.log('Cleanup success:', data.messages);
+                    displayCleanupMessages(data.messages, [], 'architectury-cleanup-messages');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                displayCleanupMessages([], [`Error during cleanup: ${error}`], 'architectury-cleanup-messages');
+            })
+            .finally(() => {
+                // Re-enable the cleanup button and restore original text
+                cleanupBtn.disabled = false;
+                cleanupBtn.innerHTML = '<i class="fas fa-broom"></i> Cleanup';
+            });
+        });
+
+        // Initialize host selection handler for Architectury cleanup button
+        const architecturyHostSelect = document.getElementById('architectury-host');
+        const architecturyCleanupBtn = document.getElementById('cleanup-architectury-btn');
+        
+        architecturyHostSelect.addEventListener('change', function() {
+            architecturyCleanupBtn.disabled = !this.value;
+        });
     });
 
     // Update the existing updateProfileStatus function
@@ -610,6 +789,138 @@
     function startProfileStatusPolling() {
         const poll = async () => {
             if (await updateProfileStatus()) {
+                setTimeout(poll, 1000);
+            }
+        };
+        poll();
+    }
+
+    // Function to show Architectury download status message
+    function showArchitecturyDownloadStatus(message, type = 'info') {
+        const statusDiv = $('#architectury-download-status');
+        statusDiv
+            .removeClass('info error')
+            .addClass(type)
+            .html(`<i class="fas ${type === 'info' ? 'fa-info-circle' : 'fa-exclamation-circle'}"></i> ${message}`)
+            .show();
+        
+        // Log to console as well
+        console.log(`Architectury Download Status (${type}):`, message);
+    }
+
+    // Function to update Architectury download button state
+    function updateArchitecturyDownloadButton(data) {
+        const downloadBtn = $('#download-architectury-collector-btn');
+        console.log('Updating Architectury download button state with data:', data);
+        
+        if (data.completed && data.artifact_stats && 
+            data.artifact_stats.successful && 
+            data.artifact_stats.successful.length > 0) {
+            console.log('Enabling Architectury download button - collector available');
+            downloadBtn
+                .prop('disabled', false)
+                .addClass('enabled')
+                .attr('title', 'Click to download the collector');
+            showArchitecturyDownloadStatus('Collector is ready for download', 'info');
+        } else {
+            console.log('Disabling Architectury download button - collector not available');
+            downloadBtn
+                .prop('disabled', true)
+                .removeClass('enabled')
+                .attr('title', 'Collector not available');
+            showArchitecturyDownloadStatus('Collector is not available yet', 'info');
+        }
+    }
+
+    // Update the existing updateArchitecturyStatus function
+    async function updateArchitecturyStatus() {
+        try {
+            const response = await fetch('/architectury-status');
+            const data = await response.json();
+            console.log('Architectury status update received:', data);
+
+            // Show all sections
+            document.getElementById('architectury-progress').style.display = 'block';
+            document.getElementById('architectury-status-messages').style.display = 'block';
+
+            // Update progress bar
+            const progress = data.total_artifacts ? 
+                Math.round((data.processed_artifacts / data.total_artifacts) * 100) : 0;
+            document.getElementById('architectury-progress-bar').style.width = `${progress}%`;
+            document.getElementById('architectury-progress-bar').textContent = `${progress}%`;
+
+            // Update current artifact and counts
+            document.getElementById('architectury-current-artifact').textContent = data.current_artifact || '-';
+            document.getElementById('architectury-processed-count').textContent = data.processed_artifacts || 0;
+            document.getElementById('architectury-total-count').textContent = data.total_artifacts || 0;
+
+            // Note: Statistics elements removed from simplified template
+
+            // Update status messages
+            const messagesContainer = document.getElementById('architectury-messages-container');
+            messagesContainer.innerHTML = data.messages.map(msg => `
+                <div class="status-message ${msg.type || 'info'}">
+                    <span class="timestamp">[${msg.timestamp}]</span>
+                    <span class="message-content">${msg.message}</span>
+                    ${msg.elapsed ? `<span class="elapsed-time">${msg.elapsed}</span>` : ''}
+                </div>
+            `).join('');
+
+            // Auto-scroll to the bottom of the messages container
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            // Update download button state
+            updateArchitecturyDownloadButton(data);
+
+            // If processing is complete, show results
+            if (data.completed) {
+                document.getElementById('architectury-results').style.display = 'block';
+                
+                // Update results content with simple success/failure summary
+                const successfulCount = data.artifact_stats?.successful?.length || 0;
+                const failedCount = data.artifact_stats?.failed?.length || 0;
+                
+                document.getElementById('architectury-results-content').innerHTML = `
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Architectury Test Run Completed</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="alert alert-success">
+                                        <i class="fas fa-check-circle"></i>
+                                        <strong>Successful:</strong> ${successfulCount} artifacts
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="alert alert-danger">
+                                        <i class="fas fa-times-circle"></i>
+                                        <strong>Failed:</strong> ${failedCount} artifacts
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="text-muted">Check the status messages above for detailed information.</p>
+                        </div>
+                    </div>
+                `;
+                
+                // Enable cleanup button when processing is complete
+                document.getElementById('cleanup-architectury-btn').disabled = false;
+                
+                console.log('Architectury processing completed, final button state update');
+                return false; // Stop polling
+            }
+            return true; // Continue polling
+        } catch (error) {
+            console.error('Error fetching Architectury status:', error);
+            showArchitecturyDownloadStatus('Error checking Architectury status: ' + error, 'error');
+            return true; // Continue polling despite error
+        }
+    }
+
+    // Function to start Architectury status polling
+    function startArchitecturyStatusPolling() {
+        const poll = async () => {
+            if (await updateArchitecturyStatus()) {
                 setTimeout(poll, 1000);
             }
         };

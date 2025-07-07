@@ -3,6 +3,7 @@ import os
 import json
 from collector_manager import CollectorManager
 from config import Config, init_directories, get_winrm_credentials
+from colors import print_warning
 import threading
 import time
 import argparse
@@ -422,7 +423,7 @@ def start_profile_testing():
             # Start processing in background thread
             thread = threading.Thread(
                 target=process_profile_artifacts,
-                args=(artifacts, build_collectors)
+                args=(artifacts, build_collectors, False, 'windows')  # Not using Architectury
             )
             thread.daemon = True
             thread.start()
@@ -442,7 +443,7 @@ def start_profile_testing():
         app.logger.error(f"Unexpected error in start_profile_testing: {str(e)}")
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-def process_profile_artifacts(artifacts, build_collectors):
+def process_profile_artifacts(artifacts, build_collectors, use_architectury=False, platform='windows'):
     """Process all artifacts from selected profiles in a single spec"""
     global collector_manager
     try:
@@ -461,15 +462,29 @@ def process_profile_artifacts(artifacts, build_collectors):
         })
 
         # Update status message
-        collector_manager.update_status(
-            f"Processing {len(artifacts)} artifacts from selected profiles"
-        )
+        if use_architectury:
+            collector_manager.update_status(
+                f"Processing {len(artifacts)} artifacts using Architectury for platform {platform}"
+            )
+        else:
+            collector_manager.update_status(
+                f"Processing {len(artifacts)} artifacts from selected profiles"
+            )
 
         # Process all artifacts in a single spec
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         spec_name = f"profile_test_{timestamp}"
         start_time = time.time()
-        success = collector_manager.process_artifact_combination(artifacts, build_collectors)
+        
+        if use_architectury:
+            success = collector_manager.process_artifact_combination(
+                artifacts, 
+                build_collectors, 
+                use_architectury=True, 
+                platform=platform
+            )
+        else:
+            success = collector_manager.process_artifact_combination(artifacts, build_collectors)
         total_execution_time = time.time() - start_time
         
         if success and build_collectors:
@@ -570,6 +585,160 @@ def get_profile_status():
             'messages': [],
             'completed': False,
             'artifact_results': []
+        })
+    
+    status = collector_manager.get_status()
+    return jsonify(status)
+
+@app.route('/start-architectury', methods=['POST'])
+def start_architectury_testing():
+    """Start testing with Architectury build method using existing profile processing"""
+    global collector_manager
+    
+    try:
+        # Log raw request data for debugging
+        app.logger.info(f"Raw Architectury request data: {request.get_data()}")
+        
+        if not request.is_json:
+            app.logger.error("Request Content-Type is not application/json")
+            return jsonify({'error': 'Request must be JSON'}), 400
+            
+        if collector_manager and collector_manager.status['processing']:
+            return jsonify({
+                'error': 'Processing already in progress',
+                'current_artifact': collector_manager.status['current_artifact']
+            })
+
+        # Get processing parameters
+        data = request.get_json()
+        app.logger.info(f"Parsed Architectury JSON data: {data}")
+        
+        artifacts = data.get('artifacts', [])
+        platform = data.get('platform', 'windows')
+        host = data.get('host')
+        build_collectors = data.get('buildCollectors', True)
+        use_architectury = data.get('useArchitectury', True)
+
+        # Validate required fields
+        if not artifacts:
+            return jsonify({'error': 'No artifacts specified'}), 400
+        if not platform:
+            return jsonify({'error': 'No platform selected'}), 400
+        if not host:
+            return jsonify({'error': 'No host selected'}), 400
+
+        # Log the received parameters
+        app.logger.info(f"Received Architectury testing request - Artifacts: {artifacts}, Platform: {platform}, Host: {host}, Build Collectors: {build_collectors}")
+
+        # Clean all directories using collector_manager's function
+        CollectorManager.clean_all_directories()
+
+        # Set the appropriate host in environment variables
+        if host == 'win10':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN10')
+        elif host == 'win11':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WIN11')
+        elif host == 'winserver12':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer12')
+        elif host == 'winserver16':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer16')
+        elif host == 'winserver19':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer19')
+        elif host == 'winserver22':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer22')
+        elif host == 'winserver25':
+            os.environ['WINRM_HOST'] = Config.get('WINRM_HOST_WINServer25')
+        else:
+            return jsonify({'error': 'Invalid host selected'}), 400
+
+        # Process artifacts - check if it's a profile ID or actual artifacts
+        processed_artifacts = []
+        if len(artifacts) == 1 and artifacts[0].endswith('.json'):
+            # This is a profile ID, load the profile
+            profile_id = artifacts[0]
+            profile_path = os.path.join('profiles', f'{profile_id}.json')
+            if not os.path.exists(profile_path):
+                return jsonify({'error': f'Profile not found: {profile_id}'}), 404
+                
+            try:
+                with open(profile_path, 'r') as f:
+                    profile = json.load(f)
+                    processed_artifacts = profile.get('artifacts', [])
+                    app.logger.info(f"Loaded artifacts from profile {profile_id}: {processed_artifacts}")
+            except json.JSONDecodeError as e:
+                return jsonify({'error': f'Invalid JSON in profile {profile_id}: {str(e)}'}), 400
+            except Exception as e:
+                app.logger.error(f"Error loading profile {profile_id}: {str(e)}")
+                return jsonify({'error': f'Error loading profile {profile_id}: {str(e)}'}), 500
+        else:
+            # These are actual artifacts
+            processed_artifacts = artifacts
+
+        if not processed_artifacts:
+            return jsonify({'error': 'No artifacts found'}), 400
+
+        try:
+            # Create new collector manager instance
+            collector_manager = CollectorManager(mode='batch')
+            app.logger.info(f"Created new CollectorManager instance for Architectury testing")
+            
+            # Initialize credentials and connections if building collectors
+            if build_collectors:
+                credentials = get_winrm_credentials()
+                if not credentials:
+                    return jsonify({'error': 'Failed to get credentials'}), 500
+                collector_manager.credentials = credentials
+                winrm_session = collector_manager.create_winrm_session(credentials)
+                if not collector_manager.cleanup_remote_files(winrm_session):
+                    print_warning("Proceeding despite cleanup issues...")
+                
+                # Initialize WinRM session
+                if not collector_manager.initialize_connections():
+                    return jsonify({'error': 'Failed to initialize WinRM connection'}), 500
+            
+            # Start processing in background thread using existing process_profile_artifacts function
+            thread = threading.Thread(
+                target=process_profile_artifacts,
+                args=(processed_artifacts, build_collectors, use_architectury, platform)
+            )
+            thread.daemon = True
+            thread.start()
+
+            return jsonify({
+                'status': 'started',
+                'total_artifacts': len(processed_artifacts),
+                'platform': platform,
+                'host': host,
+                'build_collectors': build_collectors,
+                'use_architectury': use_architectury
+            })
+
+        except Exception as e:
+            app.logger.error(f"Failed to start Architectury testing: {str(e)}")
+            return jsonify({'error': f'Failed to start Architectury testing: {str(e)}'}), 500
+
+    except Exception as e:
+        app.logger.error(f"Unexpected error in start_architectury_testing: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+
+
+@app.route('/architectury-status')
+def get_architectury_status():
+    """Get current Architectury testing status and statistics"""
+    global collector_manager
+    if not collector_manager:
+        return jsonify({
+            'processing': False,
+            'total_artifacts': 0,
+            'processed_artifacts': 0,
+            'current_artifact': '',
+            'messages': [],
+            'completed': False,
+            'artifact_stats': {
+                'successful': [],
+                'failed': []
+            }
         })
     
     status = collector_manager.get_status()
@@ -699,14 +868,16 @@ def find_latest_collector(
                 # Convert root path to forward slashes
                 root = root.replace('\\', '/')
                 for file in files:
-                    if file.lower().endswith(file_extension.lower()) and file_pattern.lower() in file.lower():
+                    # Handle empty file extension (for cross-platform support)
+                    if (file_extension == "" or file.lower().endswith(file_extension.lower())) and file_pattern.lower() in file.lower():
                         file_path = os.path.join(root, file).replace('\\', '/')
                         collector_files.append((file_path, os.path.getmtime(file_path)))
                         app.logger.info(f"Found matching file: {file_path}")
         else:
             # Non-recursive search, only in the specified directory
             for file in os.listdir(search_dir):
-                if file.lower().endswith(file_extension.lower()) and file_pattern.lower() in file.lower():
+                # Handle empty file extension (for cross-platform support)
+                if (file_extension == "" or file.lower().endswith(file_extension.lower())) and file_pattern.lower() in file.lower():
                     file_path = os.path.join(search_dir, file).replace('\\', '/')
                     if os.path.isfile(file_path):
                         collector_files.append((file_path, os.path.getmtime(file_path)))
@@ -856,6 +1027,87 @@ def download_collector():
             
     except Exception as e:
         error_msg = f"Unexpected error in download_collector: {str(e)}"
+        app.logger.error(error_msg)
+        return jsonify({'error': error_msg}), 500
+
+@app.route('/download-architectury-collector')
+def download_architectury_collector():
+    """Download the latest Architectury collector file"""
+    try:
+        app.logger.info("\n=== Starting Download Architectury Collector Request ===")
+        
+        # Get absolute path to the application root directory
+        app_root = os.path.abspath(os.getcwd())
+        app.logger.info(f"Application root: {app_root}")
+        
+        # Get the COLLECTOR_FILE path from config
+        from config import Config
+        collector_file_path = Config.get('COLLECTOR_FILE')
+        app.logger.info(f"COLLECTOR_FILE path: {collector_file_path}")
+        
+        # Use Flask's safe_join to create a safe path to the collector file
+        full_path = safe_join(app_root, collector_file_path)
+        if full_path is None:
+            error_msg = "Invalid collector file path"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 400
+            
+        full_path = full_path.replace('\\', '/')
+        app.logger.info(f"Safe collector file path: {full_path}")
+        
+        if not os.path.exists(full_path):
+            error_msg = f"Architectury collector file not found at {full_path}"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 404
+            
+        # Get filename and verify file
+        filename = os.path.basename(full_path)
+        app.logger.info(f"\n=== File Details ===")
+        app.logger.info(f"Full path: {full_path}")
+        app.logger.info(f"Filename: {filename}")
+        
+        if not os.path.isfile(full_path):
+            error_msg = f"Collector file not found at {full_path}"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 404
+            
+        try:
+            app.logger.info("\n=== Attempting Download ===")
+            
+            # Get file size
+            file_size = os.path.getsize(full_path)
+            app.logger.info(f"File size: {file_size} bytes")
+            
+            # Read file in binary mode
+            with open(full_path, 'rb') as f:
+                file_data = f.read()
+            
+            # Create response with file data
+            response = make_response(file_data)
+            
+            # Set headers
+            response.headers['Content-Type'] = 'application/octet-stream'
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.headers['Content-Length'] = file_size
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            app.logger.info("Successfully created response")
+            app.logger.info(f"Response headers: {dict(response.headers)}")
+            
+            return response
+            
+        except Exception as e:
+            error_msg = f"Error sending file: {str(e)}"
+            app.logger.error(f"\n=== Download Error Details ===")
+            app.logger.error(f"Error message: {str(e)}")
+            app.logger.error(f"Full path: {full_path}")
+            app.logger.error(f"Filename: {filename}")
+            return jsonify({'error': error_msg}), 500
+            
+    except Exception as e:
+        error_msg = f"Unexpected error in download_architectury_collector: {str(e)}"
         app.logger.error(error_msg)
         return jsonify({'error': error_msg}), 500
 

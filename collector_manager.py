@@ -11,6 +11,7 @@ import queue
 import threading
 import time
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime
 import pytz
@@ -20,7 +21,6 @@ from cryptography.utils import CryptographyDeprecationWarning
 from config import Config, init_directories, get_winrm_credentials
 from colors import print_success, print_error, print_info, print_warning, SUCCESS_EMOJI, ERROR_EMOJI, logger
 import re
-import subprocess
 from process_zip_files import process_single_zip, check_process_single_zip
 
 # Suppress deprecation warnings
@@ -588,6 +588,176 @@ class CollectorManager:
             self.update_status(f"Error building collector: {str(e)}", True)
             return None
 
+    def build_collector_with_architectury(self, artifact_name: str, spec_path: str, platform: str = 'windows') -> Optional[str]:
+        """
+        Build collector executable using the Architectury project
+        
+        Args:
+            artifact_name: Name of the artifact to build collector for
+            spec_path: Path to the spec file (not used in Architectury method)
+            platform: Target platform ('windows', 'linux', or 'darwin')
+            
+        Returns:
+            Path to the created collector executable or None if failed
+        """
+        print_info(f"\nStarting Architectury collector build for {artifact_name} on {platform}")
+        logger.info(f"Starting Architectury collector build for {artifact_name} on {platform}")
+        
+        try:
+            self.update_status(f"Building Architectury collector for {artifact_name} on {platform}")
+            
+            # Get Architectury path from environment
+            architectury_path = Config.get('ARCHITECTURY')
+            if not architectury_path:
+                error_msg = "ARCHITECTURY environment variable not set"
+                print_error(error_msg)
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
+                return None
+            
+            # Check if Architectury path exists
+            if not os.path.exists(architectury_path):
+                error_msg = f"Architectury path does not exist: {architectury_path}"
+                print_error(error_msg)
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
+                return None
+            
+            # Check if main.py exists in Architectury directory
+            main_py_path = os.path.join(architectury_path, 'main.py')
+            if not os.path.exists(main_py_path):
+                error_msg = f"main.py not found in Architectury directory: {main_py_path}"
+                print_error(error_msg)
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
+                return None
+            
+            # Validate platform
+            valid_platforms = ['windows', 'linux', 'darwin']
+            if platform not in valid_platforms:
+                error_msg = f"Invalid platform '{platform}'. Must be one of: {', '.join(valid_platforms)}"
+                print_error(error_msg)
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
+                return None
+            
+            # Create collectors directory if it doesn't exist
+            collectors_dir = Config.get('ARTIFACT_COLLECTORS_DIR')
+            print_info(f"Creating collectors directory: {collectors_dir}")
+            logger.debug(f"Creating collectors directory: {collectors_dir}")
+            os.makedirs(collectors_dir, exist_ok=True)
+            
+            # Build the command to execute Architectury
+            cmd = [
+                sys.executable,  # Use current Python interpreter
+                main_py_path,
+                '--platform', platform,
+                '--no-banner'  # Suppress banner for cleaner output
+            ]
+            
+            print_info(f"\nExecuting Architectury command:\n{' '.join(cmd)}")
+            logger.info(f"Architectury command: {' '.join(cmd)}")
+            self.update_status(f"Running Architectury build command: {' '.join(cmd)}")
+            
+            # Execute the Architectury command
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,  # Don't raise exception on non-zero exit
+                    cwd=architectury_path  # Run from Architectury directory
+                )
+                
+                print_info(f"Architectury command result code: {result.returncode}")
+                logger.debug(f"Architectury command result: {result.returncode}")
+                
+                if result.stderr:
+                    print_error(f"Architectury stderr: {result.stderr}")
+                    logger.error(f"Architectury stderr: {result.stderr}")
+                
+                if result.stdout:
+                    print_info(f"Architectury stdout: {result.stdout}")
+                    logger.info(f"Architectury stdout: {result.stdout}")
+                
+                if result.returncode == 0:
+                    # Look for the generated collector in Architectury's output directory
+                    architectury_output_dir = os.path.join(architectury_path, 'output')
+                    
+                    if not os.path.exists(architectury_output_dir):
+                        error_msg = f"Architectury output directory not found: {architectury_output_dir}"
+                        print_error(error_msg)
+                        logger.error(error_msg)
+                        self.update_status(error_msg, True)
+                        return None
+                    
+                    # Look for collector files in the output directory
+                    collector_files = []
+                    for file in os.listdir(architectury_output_dir):
+                        file_path = os.path.join(architectury_output_dir, file)
+                        if os.path.isfile(file_path):
+                            # Check if it's a collector for the target platform
+                            if platform == 'windows' and file.endswith('.exe'):
+                                collector_files.append(file_path)
+                            elif platform in ['linux', 'darwin'] and not file.endswith('.exe'):
+                                # For Linux/Darwin, look for files without .exe extension
+                                if platform in file.lower():
+                                    collector_files.append(file_path)
+                    
+                    if not collector_files:
+                        error_msg = f"No collector files found in Architectury output directory for platform {platform}"
+                        print_error(error_msg)
+                        logger.error(error_msg)
+                        self.update_status(error_msg, True)
+                        return None
+                    
+                    # Use the first (or most recent) collector file
+                    source_collector = collector_files[0]
+                    
+                    # Copy the collector to the COLLECTOR_FILE location for tool integration
+                    collector_file_path = Config.get('COLLECTOR_FILE')
+                    
+                    # Ensure the datastore directory exists
+                    datastore_dir = os.path.dirname(collector_file_path)
+                    os.makedirs(datastore_dir, exist_ok=True)
+                    
+                    # Copy the collector to the expected location
+                    try:
+                        shutil.copy2(source_collector, collector_file_path)
+                        file_size = os.path.getsize(collector_file_path)
+                        success_msg = f"Successfully copied Architectury collector to {collector_file_path} (Size: {file_size/1024:.2f} KB)"
+                        print_success(success_msg)
+                        logger.info(success_msg)
+                        self.update_status(success_msg)
+                        return collector_file_path
+                    except Exception as e:
+                        error_msg = f"Failed to copy Architectury collector from {source_collector} to {collector_file_path}: {str(e)}"
+                        print_error(error_msg)
+                        logger.error(error_msg)
+                        self.update_status(error_msg, True)
+                        return None
+                else:
+                    error_msg = f"Architectury build failed. Command exit code: {result.returncode}"
+                    if result.stderr:
+                        error_msg += f"\nError: {result.stderr}"
+                    print_error(error_msg)
+                    logger.error(error_msg)
+                    self.update_status(error_msg, True)
+                    return None
+                    
+            except Exception as e:
+                error_msg = f"Failed to execute Architectury command: {str(e)}"
+                print_error(error_msg)
+                logger.error(error_msg)
+                self.update_status(error_msg, True)
+                return None
+                
+        except Exception as e:
+            print_error(f"Architectury collector build failed: {str(e)}")
+            logger.error(f"Architectury collector build failed: {str(e)}")
+            self.update_status(f"Error building Architectury collector: {str(e)}", True)
+            return None
+
     def push_and_execute_collector(self, local_path: str, artifact_name: str) -> bool:
         """Push collector to remote system and execute it"""
         try:
@@ -1074,7 +1244,7 @@ class CollectorManager:
         
         self.status['processed'] += 1
 
-    def process_single_artifact(self, artifact_name: str, build_collectors: bool) -> bool:
+    def process_single_artifact(self, artifact_name: str, build_collectors: bool, use_architectury: bool = False, platform: str = 'windows') -> bool:
         """Process a single artifact through all steps"""
         try:
             start_time = time.time()
@@ -1090,7 +1260,11 @@ class CollectorManager:
             if build_collectors:
                 # Step 2: Build collector executable
                 print_info("\nStep 2: Building collector executable")
-                collector_path = self.build_collector_exe(artifact_name, spec_path)
+                if use_architectury:
+                    collector_path = self.build_collector_with_architectury(artifact_name, spec_path, platform)
+                else:
+                    collector_path = self.build_collector_exe(artifact_name, spec_path)
+                
                 if not collector_path:
                     self.update_artifact_statistics(artifact_name, False, time.time() - start_time)
                     return False
@@ -1222,7 +1396,7 @@ class CollectorManager:
             print_error(f"Failed to read output file: {str(e)}")
             return False
 
-    def run(self, artifacts: Optional[List[str]] = None, build_collectors: bool = False) -> bool:
+    def run(self, artifacts: Optional[List[str]] = None, build_collectors: bool = False, use_architectury: bool = False, platform: str = 'windows') -> bool:
         """Main entry point for running the collector manager"""
         try:
             if self.mode == 'batch':
@@ -1230,16 +1404,16 @@ class CollectorManager:
                     print_error("Artifacts list required for batch mode")
                     logger.error("Artifacts list required for batch mode")
                     return False
-                logger.info(f"Starting batch mode with build_collectors={build_collectors}")
-                return self.run_batch_mode(artifacts, build_collectors)
+                logger.info(f"Starting batch mode with build_collectors={build_collectors}, use_architectury={use_architectury}, platform={platform}")
+                return self.run_batch_mode(artifacts, build_collectors, use_architectury, platform)
                 
             elif self.mode == 'individual':
                 if not artifacts:
                     print_error("Artifacts list required for individual mode")
                     logger.error("Artifacts list required for individual mode")
                     return False
-                logger.info(f"Starting individual mode with build_collectors={build_collectors}")
-                return self.run_individual_mode(artifacts, build_collectors)
+                logger.info(f"Starting individual mode with build_collectors={build_collectors}, use_architectury={use_architectury}, platform={platform}")
+                return self.run_individual_mode(artifacts, build_collectors, use_architectury, platform)
                 
             elif self.mode == 'windows_test':
                 return self.run_windows_test()
@@ -1257,9 +1431,9 @@ class CollectorManager:
             logger.error(f"Error in CollectorManager.run: {str(e)}")
             return False
 
-    def run_batch_mode(self, artifacts: List[str], build_collectors: bool = False) -> bool:
+    def run_batch_mode(self, artifacts: List[str], build_collectors: bool = False, use_architectury: bool = False, platform: str = 'windows') -> bool:
         """Run batch processing of artifacts"""
-        logger.info(f"Starting batch mode with {len(artifacts)} artifacts and build_collectors={build_collectors}")
+        logger.info(f"Starting batch mode with {len(artifacts)} artifacts, build_collectors={build_collectors}, use_architectury={use_architectury}, platform={platform}")
         self.status['processing'] = True
         self.status['completed'] = False
         self.status['total_artifacts'] = len(artifacts)
@@ -1276,25 +1450,25 @@ class CollectorManager:
             logger.debug("Initializing directories")
             init_directories()
             
-            if build_collectors:
+            if build_collectors and not use_architectury:
                 logger.info("Build collectors flag is True, initializing connections")
                 if not self.initialize_connections():
                     logger.error("Failed to initialize connections")
                     return False
             else:
-                logger.info("Build collectors flag is False, skipping connection initialization")
+                logger.info("Build collectors flag is False or using Architectury, skipping connection initialization")
             
             # Process each artifact
             logger.info("Starting artifact processing")
             overall_success = True
             for artifact in artifacts:
-                logger.debug(f"Processing artifact: {artifact} with build_collectors={build_collectors}")
-                if not self.process_single_artifact(artifact, build_collectors):
+                logger.debug(f"Processing artifact: {artifact} with build_collectors={build_collectors}, use_architectury={use_architectury}")
+                if not self.process_single_artifact(artifact, build_collectors, use_architectury, platform):
                     logger.warning(f"Failed to process artifact: {artifact}")
                     overall_success = False
             
             # After all artifacts are processed, pull all zip files at once
-            if build_collectors and overall_success:
+            if build_collectors and overall_success and not use_architectury:
                 logger.info("All artifacts processed, pulling collection data")
                 print_info("\nPulling all collection data...")
                 if not self.pull_collection_data():
@@ -1312,6 +1486,77 @@ class CollectorManager:
         except Exception as e:
             logger.error(f"Error in batch processing: {str(e)}")
             self.update_status(f"Error in batch processing: {str(e)}", True)
+            return False
+        finally:
+            self.status['processing'] = False
+            self.status['completed'] = True
+            self.status['task_start_time'] = None
+            
+            if self.winrm_session:
+                logger.debug("Cleaning up remote files")
+                self.cleanup_remote_files(self.winrm_session)
+
+    def run_individual_mode(self, artifacts: List[str], build_collectors: bool = False, use_architectury: bool = False, platform: str = 'windows') -> bool:
+        """Run individual processing of artifacts (one at a time)"""
+        logger.info(f"Starting individual mode with {len(artifacts)} artifacts, build_collectors={build_collectors}, use_architectury={use_architectury}, platform={platform}")
+        self.status['processing'] = True
+        self.status['completed'] = False
+        self.status['total_artifacts'] = len(artifacts)
+        self.status['processed'] = 0
+        
+        try:
+            # Initialize directories and connections
+            logger.debug("Cleaning directories")
+            if not self.clean_all_directories():
+                logger.error("Failed to clean directories")
+                self.update_status("Failed to clean directories", True)
+                return False
+            
+            logger.debug("Initializing directories")
+            init_directories()
+            
+            if build_collectors and not use_architectury:
+                logger.info("Build collectors flag is True, initializing connections")
+                if not self.initialize_connections():
+                    logger.error("Failed to initialize connections")
+                    return False
+            else:
+                logger.info("Build collectors flag is False or using Architectury, skipping connection initialization")
+            
+            # Process each artifact individually
+            logger.info("Starting individual artifact processing")
+            overall_success = True
+            for artifact in artifacts:
+                logger.debug(f"Processing artifact: {artifact} with build_collectors={build_collectors}, use_architectury={use_architectury}")
+                
+                # Clean up before each artifact
+                if not self.clean_all_directories():
+                    logger.warning(f"Failed to clean directories before processing {artifact}")
+                
+                if not self.process_single_artifact(artifact, build_collectors, use_architectury, platform):
+                    logger.warning(f"Failed to process artifact: {artifact}")
+                    overall_success = False
+                    continue
+                
+                # After each artifact is processed, pull collection data if needed
+                if build_collectors and not use_architectury:
+                    logger.info(f"Pulling collection data for {artifact}")
+                    print_info(f"\nPulling collection data for {artifact}...")
+                    if not self.pull_collection_data():
+                        logger.error(f"Failed to pull collection data for {artifact}")
+                        overall_success = False
+                    else:
+                        # Process the pulled data
+                        print_info(f"\nProcessing collection data for {artifact}...")
+                        if not self.process_collection_data():
+                            logger.error(f"Failed to process collection data for {artifact}")
+                            overall_success = False
+            
+            return overall_success
+            
+        except Exception as e:
+            logger.error(f"Error in individual processing: {str(e)}")
+            self.update_status(f"Error in individual processing: {str(e)}", True)
             return False
         finally:
             self.status['processing'] = False
@@ -1957,13 +2202,15 @@ class CollectorManager:
             self.update_status(f"Error creating combined spec: {str(e)}", True)
             return None
 
-    def process_artifact_combination(self, artifacts: List[str], build_collectors: bool) -> bool:
+    def process_artifact_combination(self, artifacts: List[str], build_collectors: bool, use_architectury: bool = False, platform: str = 'windows') -> bool:
         """Process a combination of artifacts as a single unit"""
         try:
             start_time = time.time()
             logger.info(f"Starting to process artifact combination with {len(artifacts)} artifacts")
             logger.debug(f"Artifacts to process: {', '.join(artifacts)}")
             logger.debug(f"Build collectors flag: {build_collectors}")
+            logger.debug(f"Use Architectury flag: {use_architectury}")
+            logger.debug(f"Platform: {platform}")
             print_info(f"\nStarting to process artifact combination: {', '.join(artifacts)}")
             
             # Generate a unique name for this profile
@@ -1985,7 +2232,11 @@ class CollectorManager:
                 # Step 2: Build collector executable
                 print_info("\nStep 2: Building collector executable")
                 logger.info("Step 2: Building collector executable")
-                collector_path = self.build_collector_exe(profile_name, spec_path)
+                if use_architectury:
+                    collector_path = self.build_collector_with_architectury(profile_name, spec_path, platform)
+                else:
+                    collector_path = self.build_collector_exe(profile_name, spec_path)
+                
                 if not collector_path:
                     logger.error("Failed to build collector executable")
                     self.update_artifact_statistics(profile_name, False, time.time() - start_time)
@@ -2024,6 +2275,10 @@ def main():
                       default='batch', help='Operation mode')
     parser.add_argument('--artifacts', help='Comma-separated list of artifacts to process')
     parser.add_argument('--build', action='store_true', help='Build collectors for artifacts')
+    parser.add_argument('--use-architectury', action='store_true', 
+                      help='Use Architectury project for building collectors')
+    parser.add_argument('--platform', choices=['windows', 'linux', 'darwin'], default='windows',
+                      help='Target platform for collector (when using Architectury)')
     parser.add_argument('--input-dir', default='runtime',
                       help='Directory containing zip files to process (for process_zip mode). Defaults to "runtime"')
     parser.add_argument('--output-dir', default='runtime_zip',
@@ -2037,7 +2292,12 @@ def main():
         success = manager.process_zip_files(args.input_dir, args.output_dir)
     else:
         artifacts = args.artifacts.split(',') if args.artifacts else None
-        success = manager.run(artifacts=artifacts, build_collectors=args.build)
+        success = manager.run(
+            artifacts=artifacts, 
+            build_collectors=args.build,
+            use_architectury=args.use_architectury,
+            platform=args.platform
+        )
     
     sys.exit(0 if success else 1)
 

@@ -32,6 +32,26 @@ The "Profile Testing" tab enables you to validate groups of artifacts that are c
 3. Process and standardize data
 4. Add system info and timestamps
 5. Make sure everything's formatted nicely
+6. **NEW**: Build collectors using Architectury project for enhanced tool integration and cross-platform support
+7. **NEW**: Test with Architectury tab for streamlined cross-platform collector building
+
+## Web Interface Tabs
+
+### Test Individually
+- Test single artifacts in isolation
+- Perfect for development and debugging
+- Clear error messages for specific artifacts
+
+### Test Profiles
+- Test predefined artifact combinations
+- Validate artifact interactions
+- Real-world deployment scenarios
+
+### Test with Architectury (NEW)
+- Enhanced collector building with Architectury project
+- Cross-platform support (Windows, Linux, macOS)
+- Improved tool integration and reliability
+- Platform-specific collector generation
 
 ## Testing Approaches
 
@@ -95,6 +115,16 @@ python web_interface.py --ssl
 
 Visit https://localhost:5000 and you're good to go.
 
+### Using the Architectury Tab
+1. Navigate to the **"Test with Architectury"** tab
+2. Select your target host and platform
+3. Choose artifacts (profile or manual input)
+4. Configure testing settings
+5. Click **"Start Architectury Testing"**
+6. Monitor progress and download results
+
+For detailed usage instructions, see `ARCHITECTURY_TAB_GUIDE.md`.
+
 
 ## Requirements
 
@@ -123,7 +153,26 @@ VELO_DATASTORE=./datastore/
 VELO_SERVER_CONFIG=./datastore/server.config.yaml
 VELO_BINARY_PATH=./binaries/velociraptor-v0.72.4-windows-amd64.exe
 ARTIFACT_TEMPLATE_PATH=./specs/test.yaml
+ARCHITECTURY=/path/to/architectury/project
 ```
+
+### Architectury Integration
+For enhanced collector building with embedded tools and cross-platform support, you can use the Architectury project integration:
+
+```bash
+# Build collectors for Windows using Architectury
+python collector_manager.py --mode batch --artifacts "Generic.Client.Info,Windows.System.ProcessList" --build --use-architectury --platform windows
+
+# Build collectors for Linux using Architectury
+python collector_manager.py --mode batch --artifacts "Generic.Client.Info" --build --use-architectury --platform linux
+
+# Build collectors for macOS using Architectury
+python collector_manager.py --mode batch --artifacts "Generic.Client.Info" --build --use-architectury --platform darwin
+```
+
+**Important**: When using Architectury, the generated collector executable is automatically copied to the `COLLECTOR_FILE` location (`./datastore/Collector_velociraptor-v0.72.4-windows-amd64.exe`) so that the tool can use it from there. This ensures seamless integration with the existing tool workflow.
+
+See `ARCHITECTURY_INTEGRATION.md` for detailed documentation.
 
 ## Remote Host Requirements  (WINRM_HOST_*)
 The platform requires remote access to test hosts for executing, pulling, and pushing files:

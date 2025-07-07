@@ -1,0 +1,110 @@
+<!-- Architectury Testing Tab -->
+<div class="tab-pane fade" id="test-architectury">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Test with Architectury</h5>
+            <p class="card-text text-muted">Build collectors using the Architectury project with enhanced tool integration and cross-platform support.</p>
+            
+            <!-- Platform Selection -->
+            <div class="mb-3">
+                <label for="architectury-platform" class="form-label">Select Target Platform</label>
+                <select class="form-select" id="architectury-platform" required>
+                    <option value="">Select a platform...</option>
+                    <option value="windows">Windows</option>
+                    <option value="linux">Linux</option>
+                    <option value="darwin">macOS (Darwin)</option>
+                </select>
+            </div>
+
+            <!-- Host Selection -->
+            <div class="mb-3">
+                <label for="architectury-host" class="form-label">Select Target Host</label>
+                <select class="form-select" id="architectury-host" required>
+                    <option value="">Select a host...</option>
+                    <option value="win10">Windows 10</option>
+                    <option value="win11">Windows 11</option>
+                    <option value="winserver12">Windows Server 2012</option>
+                    <option value="winserver16">Windows Server 2016</option>
+                    <option value="winserver19">Windows Server 2019</option>
+                    <option value="winserver22">Windows Server 2022</option>
+                    <option value="winserver25">Windows Server 2025</option>
+                </select>
+            </div>
+
+            <!-- Execution Options -->
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="architectury-build-collectors" checked>
+                    <label class="form-check-label" for="architectury-build-collectors">
+                        Build and Execute Collectors
+                    </label>
+                </div>
+                <small class="form-text text-muted">When checked, collectors will be built and executed on the remote host. When unchecked, only collectors will be built.</small>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary" id="start-architectury-testing">
+                    <i class="fas fa-rocket"></i> Start Architectury Testing
+                </button>
+                <button type="button" class="btn btn-download-collector" id="download-architectury-collector-btn" disabled>
+                    <i class="fas fa-download"></i> Download Collector
+                </button>
+                <button type="button" class="btn btn-secondary" id="cleanup-architectury-btn" disabled>
+                    <i class="fas fa-broom"></i> Cleanup
+                </button>
+            </div>
+            <!-- Add download status message div -->
+            <div id="architectury-download-status" class="download-status"></div>
+        </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div id="architectury-progress" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Processing Progress</h5>
+                <div class="progress mb-3">
+                    <div id="architectury-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+                <p class="mb-2">Current Artifact: <span id="architectury-current-artifact">-</span></p>
+                <p class="mb-2">Processed: <span id="architectury-processed-count">0</span> / <span id="architectury-total-count">0</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="architectury-status-messages" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Status Messages</h5>
+                <div class="status-messages" id="architectury-messages-container">
+                    <!-- Status messages will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="architectury-results" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Results</h5>
+                <div id="architectury-results-content">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cleanup Status Section -->
+    <div id="architectury-cleanup-status-section" class="mt-4" style="display: none;">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Cleanup Status</h5>
+                <div class="status-messages" id="architectury-cleanup-messages">
+                    <!-- Cleanup messages will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div> 
